@@ -1,29 +1,16 @@
-from llvmlite import ir
-
-from jit import JITCompiler
-
-
-def create_return_one_function():
-    """1を返すだけの超簡単なLLVM IR関数を作成する"""
-    module = ir.Module(name="simple_module")
-    func_type = ir.FunctionType(ir.IntType(32), [])
-    func = ir.Function(module, func_type, name="return_one")
-    block = func.append_basic_block(name="entry")
-    builder = ir.IRBuilder(block)
-    one = ir.Constant(ir.IntType(32), 1)
-    builder.ret(one)
-    return module
+from isl_ast import generate_simple_loop_ast
+from isl_ast_to_c import isl_ast_to_c
 
 
 def main():
-    module = create_return_one_function()
+    # ISL ASTを生成
+    ast = generate_simple_loop_ast(n=10)
 
-    compiler = JITCompiler()
-    compiler.print_ir(module)
-    compiler.compile(module)
-    result = compiler.run("return_one")
+    # ASTからCコードを生成
+    c_code = isl_ast_to_c(str(ast))
 
-    print(f"return_one() の実行結果: {result}")
+    # Cコードを出力
+    print(c_code)
 
 
 if __name__ == "__main__":

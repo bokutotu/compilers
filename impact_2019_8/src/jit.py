@@ -1,49 +1,104 @@
-from llvmlite import binding, ir
+import ctypes
+import os
+import subprocess
+import tempfile
+from typing import Any
 
 
 class JITCompiler:
-    """LLVM IRをJITコンパイルして実行するクラス"""
+    """CコードをJITコンパイルして実行するクラス"""
 
     def __init__(self):
-        self._engine = None
-        self._initialize_llvm()
+        self._lib = None
+        self._lib_path = None
+        self._c_code = None
 
-    def _initialize_llvm(self):
-        """LLVMバックエンドを初期化する"""
-        binding.initialize_all_targets()
-        binding.initialize_native_asmprinter()
+    def compile(self, c_code: str):
+        """Cコードをclangでコンパイルして共有ライブラリを作成する"""
+        self._c_code = c_code
 
-    def compile(self, module: ir.Module):
-        """LLVM IRをコンパイルしてJITエンジンを作成する"""
-        llvm_ir = str(module)
-        mod = binding.parse_assembly(llvm_ir)
-        mod.verify()
+        # 一時ディレクトリを作成
+        self._tmpdir = tempfile.mkdtemp()
+        c_file = os.path.join(self._tmpdir, "code.c")
 
-        target = binding.Target.from_default_triple()
-        target_machine = target.create_target_machine()
-        backing_mod = binding.parse_assembly("")
-        self._engine = binding.create_mcjit_compiler(backing_mod, target_machine)
+        # プラットフォームに応じた共有ライブラリの拡張子
+        if os.uname().sysname == "Darwin":
+            lib_ext = ".dylib"
+        else:
+            lib_ext = ".so"
 
-        self._engine.add_module(mod)
-        self._engine.finalize_object()
-        self._engine.run_static_constructors()
+        self._lib_path = os.path.join(self._tmpdir, f"code{lib_ext}")
 
-    def run(self, func_name: str, restype=None, argtypes=None):
-        """コンパイル済み関数を実行する"""
-        import ctypes
+        # Cコードを一時ファイルに書き込む
+        with open(c_file, "w") as f:
+            f.write(c_code)
+
+        try:
+            # clangで共有ライブラリをコンパイル
+            subprocess.run(
+                [
+                    "clang",
+                    "-shared",
+                    "-fPIC",
+                    "-O3",
+                    "-o",
+                    self._lib_path,
+                    c_file,
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            self._cleanup()
+            raise RuntimeError(f"Compilation failed: {e.stderr}") from e
+
+        # 共有ライブラリをロード
+        self._lib = ctypes.CDLL(self._lib_path)
+
+    def get_function(
+        self,
+        func_name: str,
+        restype: type[ctypes._SimpleCData] | None = None,
+        argtypes: list[type[ctypes._SimpleCData]] | None = None,
+    ) -> ctypes._CFuncPtr:
+        """コンパイル済み関数を取得する"""
+        if self._lib is None:
+            raise RuntimeError("No code has been compiled yet")
 
         if restype is None:
             restype = ctypes.c_int
         if argtypes is None:
             argtypes = []
 
-        func_ptr = self._engine.get_function_address(func_name)
-        cfunc = ctypes.CFUNCTYPE(restype, *argtypes)(func_ptr)
-        return cfunc()
+        func = getattr(self._lib, func_name)
+        func.restype = restype
+        func.argtypes = argtypes
+        return func
 
-    @staticmethod
-    def print_ir(module: ir.Module):
-        """LLVM IRを表示する（デバッグ用）"""
-        print("=== 生成されたLLVM IR ===")
-        print(module)
-        print("=" * 30)
+    def run(
+        self,
+        func_name: str,
+        restype: type[ctypes._SimpleCData] | None = None,
+        argtypes: list[type[ctypes._SimpleCData]] | None = None,
+        args: list[Any] | None = None,
+    ) -> Any:
+        """コンパイル済み関数を実行する"""
+        func = self.get_function(func_name, restype, argtypes)
+        if args is None:
+            args = []
+        return func(*args)
+
+    def _cleanup(self):
+        """一時ファイルを削除する"""
+        if self._lib_path and os.path.exists(self._lib_path):
+            os.unlink(self._lib_path)
+        if hasattr(self, "_tmpdir") and os.path.exists(self._tmpdir):
+            c_file = os.path.join(self._tmpdir, "code.c")
+            if os.path.exists(c_file):
+                os.unlink(c_file)
+            os.rmdir(self._tmpdir)
+
+    def __del__(self):
+        """デストラクタで一時ファイルをクリーンアップ"""
+        self._cleanup()
