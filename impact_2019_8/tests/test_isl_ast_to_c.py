@@ -1,5 +1,6 @@
 """isl_ast_to_cモジュールのテスト."""
 
+from src.ast_parser import parse_isl_ast
 from src.isl_ast_to_c import isl_ast_to_c
 
 
@@ -11,11 +12,13 @@ def test_isl_ast_to_c():
         "{ op: call, args: [ { id: S }, { id: c0 } ] } } }"
     )
 
-    c_code = isl_ast_to_c(ast_str)
+    ast = parse_isl_ast(ast_str)
+    c_code = isl_ast_to_c(ast)
 
     expected = """\
 int main() {
-    for (int i = 0; i <= 9; i += 1) {
+    for (int c0 = 0; c0 <= 9; c0++) {
+        S(S + c0);
     }
     return 0;
 }"""
