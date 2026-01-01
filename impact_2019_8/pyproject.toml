@@ -4,10 +4,11 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["llvmlite"]
+dependencies = ["llvmlite", "islpy"]
 
 [dependency-groups]
 dev = [
+    "pytest>=8.0",
     "ruff>=0.14.10",
 ]
 
@@ -20,3 +21,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
