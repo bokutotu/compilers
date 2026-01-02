@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from ast_types import Body, Call, Expr, ForLoop, Id, User
-from ir_types_new import Compute
+from ir_types import Compute
 
 
 def require_id(expr: Expr, label: str) -> str:

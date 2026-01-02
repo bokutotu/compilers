@@ -1,8 +1,8 @@
 from ast_parser import parse_isl_ast
-from ir_to_isl_new import build_domain_and_schedule
-from ir_types_new import Axis, Compute, Domain, PrimFunc, Schedule, Tensor
-from isl_ast import build_ast_from_domain_and_schedule
 from codegen import isl_ast_to_c
+from ir_to_isl import build_domain_and_schedule
+from ir_types import Axis, Compute, Domain, PrimFunc, Schedule, Tensor
+from isl_ast import build_ast_from_domain_and_schedule
 
 
 def main():

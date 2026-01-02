@@ -22,10 +22,7 @@ class JITCompiler:
         c_file = os.path.join(self._tmpdir, "code.c")
 
         # プラットフォームに応じた共有ライブラリの拡張子
-        if os.uname().sysname == "Darwin":
-            lib_ext = ".dylib"
-        else:
-            lib_ext = ".so"
+        lib_ext = ".dylib" if os.uname().sysname == "Darwin" else ".so"
 
         self._lib_path = os.path.join(self._tmpdir, f"code{lib_ext}")
 

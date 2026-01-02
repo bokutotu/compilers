@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from ast_types import Body, ForLoop, User
-from ir_types_new import Compute
+from ir_types import Compute
 
 from .args import collect_function_args
 from .expr import generate_cond
@@ -15,9 +15,7 @@ from .ops import generate_user_stmt
 class CCodeGenerator:
     """ForLoopからC言語コードを生成するクラス."""
 
-    def __init__(
-        self, domain_exprs: Mapping[str, Compute], function_name: str
-    ) -> None:
+    def __init__(self, domain_exprs: Mapping[str, Compute], function_name: str) -> None:
         self._domain_exprs = dict(domain_exprs)
         self._function_name = function_name
         self._indent_level = 0

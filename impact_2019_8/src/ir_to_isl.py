@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import islpy as isl
 
-from ir_types_new import Axis, PrimFunc
+from ir_types import Axis, PrimFunc
 
 
 def _axis_dims(a: Axis) -> str:
@@ -27,10 +27,7 @@ def _make_param_str(params: list[str]) -> str:
     return f"[{', '.join(params)}] -> "
 
 
-def build_domain(
-    func: PrimFunc,
-    ctx: isl.Context | None = None
-) -> isl.UnionSet:
+def build_domain(func: PrimFunc, ctx: isl.Context | None = None) -> isl.UnionSet:
     ctx = ctx or isl.Context()
     stmt_name = func.compute.name
     domain_axes = func.compute.domain.axis
@@ -39,15 +36,11 @@ def build_domain(
     index_names = ", ".join([a.name for a in domain_axes])
     constraints = " and ".join([_axis_dims(a) for a in domain_axes])
     return isl.UnionSet(
-        f"{param_str}{{ {stmt_name}[{index_names}] : {constraints} }}",
-        ctx
+        f"{param_str}{{ {stmt_name}[{index_names}] : {constraints} }}", ctx
     )
 
 
-def build_schedule(
-    func: PrimFunc,
-    ctx: isl.Context | None = None
-) -> isl.UnionMap:
+def build_schedule(func: PrimFunc, ctx: isl.Context | None = None) -> isl.UnionMap:
     ctx = ctx or isl.Context()
     stmt_name = func.compute.name
     domain_axes = func.compute.domain.axis
@@ -56,14 +49,13 @@ def build_schedule(
     index_names = ", ".join([a.name for a in domain_axes])
     constraints = " and ".join([_axis_dims(a) for a in domain_axes])
     return isl.UnionMap(
-        f"{param_str}{{ {stmt_name}[{index_names}] -> [{index_names}] : {constraints} }}",
-        ctx
+        f"{param_str}{{ {stmt_name}[{index_names}] -> [{index_names}] : {constraints} }}",  # noqa: E501
+        ctx,
     )
 
 
 def build_domain_and_schedule(
-    func: PrimFunc,
-    ctx: isl.Context | None = None
+    func: PrimFunc, ctx: isl.Context | None = None
 ) -> tuple[isl.UnionSet, isl.UnionMap]:
     ctx = ctx or isl.Context()
     domain = build_domain(func, ctx)

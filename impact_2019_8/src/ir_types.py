@@ -33,17 +33,17 @@ class Schedule:
 
 @dataclass(frozen=True)
 class Compute:
-    name:str
+    name: str
     op: OpKind
-    a:Tensor
-    b:Tensor
-    out:Tensor
+    a: Tensor
+    b: Tensor
+    out: Tensor
     domain: Domain
 
 
 @dataclass(frozen=True)
 class PrimFunc:
-    name:str
+    name: str
     compute: Compute
     schedule: Schedule
     params: tuple[Tensor, ...]

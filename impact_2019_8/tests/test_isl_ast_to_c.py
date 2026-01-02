@@ -2,7 +2,7 @@
 
 from src.ast_parser import parse_isl_ast
 from src.codegen import isl_ast_to_c
-from src.ir_types_new import Axis, Compute, Domain, Tensor
+from src.ir_types import Axis, Compute, Domain, Tensor
 
 
 def test_isl_ast_to_c():

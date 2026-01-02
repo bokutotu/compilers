@@ -11,7 +11,7 @@ from ast_types import BinOp, Call, ForLoop, Id, User, Val
 
 def test_parse_simple_for_loop() -> None:
     """単純なforループをパースできる."""
-    ast_str = "{ iterator: { id: c0 }, init: { val: 0 }, cond: { op: le, args: [ { id: c0 }, { val: 9 } ] }, inc: { val: 1 }, body: { user: { op: call, args: [ { id: S }, { id: c0 } ] } } }"
+    ast_str = "{ iterator: { id: c0 }, init: { val: 0 }, cond: { op: le, args: [ { id: c0 }, { val: 9 } ] }, inc: { val: 1 }, body: { user: { op: call, args: [ { id: S }, { id: c0 } ] } } }"  # noqa: E501
 
     result = parse_isl_ast(ast_str)
 

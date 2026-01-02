@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from ast_types import Call, Id
-from ir_types_new import Compute, Tensor
+from ir_types import Compute, Tensor
 
 from .args import split_call_args
 from .expr import generate_index_expr

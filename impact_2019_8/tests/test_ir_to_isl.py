@@ -1,9 +1,9 @@
-"""ir_to_isl_newモジュールのテスト."""
+"""ir_to_islモジュールのテスト."""
 
 import islpy as isl
 
-from src.ir_to_isl_new import build_domain, build_domain_and_schedule, build_schedule
-from src.ir_types_new import Axis, Compute, Domain, PrimFunc, Schedule, Tensor
+from src.ir_to_isl import build_domain, build_domain_and_schedule, build_schedule
+from src.ir_types import Axis, Compute, Domain, PrimFunc, Schedule, Tensor
 
 
 def _make_func(axes: tuple[Axis, ...]) -> PrimFunc:
