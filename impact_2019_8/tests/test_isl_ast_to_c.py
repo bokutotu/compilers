@@ -1,8 +1,8 @@
 """isl_ast_to_cモジュールのテスト."""
 
 from src.ast_parser import parse_isl_ast
-from src.ir_types import Dim, MatrixOp, MatrixPtr
 from src.codegen import isl_ast_to_c
+from src.ir_types import Dim, MatrixOp, MatrixPtr
 
 
 def test_isl_ast_to_c():
