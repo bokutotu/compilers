@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-
 from ast_types import Body, ForLoop, User
-from ir_types import Compute
+from ir_types import PrimFunc
 
-from .args import collect_function_args
 from .expr import generate_cond
 from .ops import generate_user_stmt
 
@@ -15,17 +12,16 @@ from .ops import generate_user_stmt
 class CCodeGenerator:
     """ForLoopからC言語コードを生成するクラス."""
 
-    def __init__(self, domain_exprs: Mapping[str, Compute], function_name: str) -> None:
-        self._domain_exprs = dict(domain_exprs)
-        self._function_name = function_name
+    def __init__(self, func: PrimFunc) -> None:
+        self._func = func
         self._indent_level = 0
 
     def generate(self, ast: ForLoop) -> str:
         """ForLoopからC言語コードを生成する."""
-        args = collect_function_args(ast, self._domain_exprs)
+        args = [tensor.name for tensor in self._func.params]
         args_str = ", ".join(f"int *{name}" for name in args) if args else "void"
         lines = [
-            f"void {self._function_name}({args_str}) {{",
+            f"void {self._func.name}({args_str}) {{",
         ]
         self._indent_level = 1
         lines.append(self._generate_for_loop(ast))
@@ -65,7 +61,7 @@ class CCodeGenerator:
         """bodyを生成する."""
         if isinstance(body, User):
             indent = self._indent()
-            stmt = generate_user_stmt(body.expr, self._domain_exprs)
+            stmt = generate_user_stmt(body.expr, self._func.compute)
             return f"{indent}{stmt}"
         elif isinstance(body, ForLoop):
             return self._generate_for_loop(body)
@@ -73,7 +69,7 @@ class CCodeGenerator:
             raise ValueError(f"Unknown body type: {type(body)}")
 
 
-def isl_ast_to_c(ast: ForLoop, domain_exprs: Mapping[str, Compute]) -> str:
+def isl_ast_to_c(ast: ForLoop, func: PrimFunc) -> str:
     """ForLoopからC言語コードを生成する."""
-    generator = CCodeGenerator(domain_exprs=domain_exprs, function_name="kernel")
+    generator = CCodeGenerator(func)
     return generator.generate(ast)

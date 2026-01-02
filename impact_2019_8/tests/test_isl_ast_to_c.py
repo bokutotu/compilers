@@ -2,7 +2,7 @@
 
 from src.ast_parser import parse_isl_ast
 from src.codegen import isl_ast_to_c
-from src.ir_types import Axis, Compute, Domain, Tensor
+from src.ir_types import Axis, Compute, Domain, PrimFunc, Schedule, Tensor
 
 
 def test_isl_ast_to_c():
@@ -19,6 +19,7 @@ def test_isl_ast_to_c():
     b = Tensor("B", (10,))
     c = Tensor("C", (10,))
     domain = Domain((Axis("i", 10),))
+    schedule = Schedule(("i",))
     compute = Compute(
         name="S",
         op="add",
@@ -30,7 +31,13 @@ def test_isl_ast_to_c():
         b_index=("i",),
         out_index=("i",),
     )
-    c_code = isl_ast_to_c(ast, domain_exprs={compute.name: compute})
+    func = PrimFunc(
+        name="kernel",
+        compute=compute,
+        schedule=schedule,
+        params=(a, b, c),
+    )
+    c_code = isl_ast_to_c(ast, func)
 
     expected = """\
 void kernel(int *A, int *B, int *C) {

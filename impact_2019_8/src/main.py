@@ -41,7 +41,7 @@ def main():
     parsed_ast = parse_isl_ast(str(ast))
 
     # 4. ForLoopからCコードを生成
-    c_code = isl_ast_to_c(parsed_ast, domain_exprs={compute.name: compute})
+    c_code = isl_ast_to_c(parsed_ast, func)
 
     # 5. Cコードを出力
     print(c_code)
