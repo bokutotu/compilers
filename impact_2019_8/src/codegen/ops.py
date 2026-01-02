@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from ast_types import Call, Id
-from ir_types import Compute, Tensor
+from ir_types import Compute, Index, Tensor
 
 from .args import split_call_args
 from .expr import generate_index_expr
@@ -28,13 +28,11 @@ def format_tensor_access(tensor: Tensor, indices: list[str]) -> str:
     return f"{tensor.name}{suffix}"
 
 
-def _validate_indices(op: Compute, indices: list[str]) -> None:
-    """インデックス数を検証する."""
-    expected = len(op.out.shape)
-    if len(indices) != expected:
-        raise ValueError(
-            f"Index rank mismatch: expected {expected}, got {len(indices)}"
-        )
+def _resolve_tensor_indices(
+    tensor_index: Index, axis_to_var: dict[str, str]
+) -> list[str]:
+    """テンソルのindexを解決する."""
+    return [axis_to_var[axis] for axis in tensor_index]
 
 
 def _resolve_tensors(
@@ -53,17 +51,19 @@ def _resolve_tensors(
 
 def generate_op_assignment(
     op: Compute,
-    indices: list[str],
+    axis_to_var: dict[str, str],
     tensor_names: tuple[str, str, str] | None,
 ) -> str:
     """Computeを代入式に変換する."""
     if op.op not in OP_MAP:
         raise ValueError(f"Unsupported op: {op.op}")
-    _validate_indices(op, indices)
     a, b, out = _resolve_tensors(op, tensor_names)
-    out_ref = format_tensor_access(out, indices)
-    a_ref = format_tensor_access(a, indices)
-    b_ref = format_tensor_access(b, indices)
+    a_indices = _resolve_tensor_indices(op.a_index, axis_to_var)
+    b_indices = _resolve_tensor_indices(op.b_index, axis_to_var)
+    out_indices = _resolve_tensor_indices(op.out_index, axis_to_var)
+    out_ref = format_tensor_access(out, out_indices)
+    a_ref = format_tensor_access(a, a_indices)
+    b_ref = format_tensor_access(b, b_indices)
     return f"{out_ref} = {a_ref} {OP_MAP[op.op]} {b_ref}"
 
 
@@ -79,4 +79,6 @@ def generate_user_stmt(call: Call, domain_exprs: Mapping[str, Compute]) -> str:
         raise ValueError(f"Unknown statement id: {stmt_id.name}")
     tensor_names, index_exprs = split_call_args(op, call.args[1:])
     indices = [generate_index_expr(arg) for arg in index_exprs]
-    return f"{generate_op_assignment(op, indices, tensor_names)};"
+    # Domainの軸名とISL変数のマッピングを作成
+    axis_to_var = {axis.name: indices[i] for i, axis in enumerate(op.domain.axis)}
+    return f"{generate_op_assignment(op, axis_to_var, tensor_names)};"

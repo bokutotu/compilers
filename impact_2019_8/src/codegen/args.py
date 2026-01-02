@@ -19,7 +19,8 @@ def split_call_args(
     op: Compute, args: list[Expr]
 ) -> tuple[tuple[str, str, str] | None, list[Expr]]:
     """Call argsをマトリックス名とインデックスに分割する."""
-    rank = len(op.out.shape)
+    # Domainの軸の数を使用
+    rank = len(op.domain.axis)
     operand_count = 3
     if len(args) == rank:
         return None, args

@@ -21,6 +21,9 @@ def main():
         b=b,
         out=c,
         domain=domain,
+        a_index=("i",),
+        b_index=("i",),
+        out_index=("i",),
     )
 
     func = PrimFunc(

@@ -10,6 +10,7 @@ def _make_func(axes: tuple[Axis, ...]) -> PrimFunc:
     a = Tensor(name="A", shape=tuple(ax.extent for ax in axes))
     b = Tensor(name="B", shape=tuple(ax.extent for ax in axes))
     out = Tensor(name="C", shape=tuple(ax.extent for ax in axes))
+    axis_names = tuple(ax.name for ax in axes)
     return PrimFunc(
         name="kernel",
         compute=Compute(
@@ -19,8 +20,11 @@ def _make_func(axes: tuple[Axis, ...]) -> PrimFunc:
             b=b,
             out=out,
             domain=Domain(axes),
+            a_index=axis_names,
+            b_index=axis_names,
+            out_index=axis_names,
         ),
-        schedule=Schedule(loop_order=tuple(ax.name for ax in axes)),
+        schedule=Schedule(loop_order=axis_names),
         params=(a, b, out),
     )
 

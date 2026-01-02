@@ -6,6 +6,7 @@ from typing import Literal
 OpKind = Literal["add", "sub", "mul", "div"]
 Extent = int | str
 Shape = tuple[Extent, ...]
+Index = tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,9 @@ class Compute:
     b: Tensor
     out: Tensor
     domain: Domain
+    a_index: Index
+    b_index: Index
+    out_index: Index
 
 
 @dataclass(frozen=True)

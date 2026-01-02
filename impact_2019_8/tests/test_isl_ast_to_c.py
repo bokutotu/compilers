@@ -19,7 +19,17 @@ def test_isl_ast_to_c():
     b = Tensor("B", (10,))
     c = Tensor("C", (10,))
     domain = Domain((Axis("i", 10),))
-    compute = Compute(name="S", op="add", a=a, b=b, out=c, domain=domain)
+    compute = Compute(
+        name="S",
+        op="add",
+        a=a,
+        b=b,
+        out=c,
+        domain=domain,
+        a_index=("i",),
+        b_index=("i",),
+        out_index=("i",),
+    )
     c_code = isl_ast_to_c(ast, domain_exprs={compute.name: compute})
 
     expected = """\
