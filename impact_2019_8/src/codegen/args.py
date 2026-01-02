@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from ast_types import Body, Call, Expr, ForLoop, Id, User
-from ir_types import MatrixOp
+from ir_types_new import Compute
 
 
 def require_id(expr: Expr, label: str) -> str:
@@ -16,10 +16,10 @@ def require_id(expr: Expr, label: str) -> str:
 
 
 def split_call_args(
-    op: MatrixOp, args: list[Expr]
+    op: Compute, args: list[Expr]
 ) -> tuple[tuple[str, str, str] | None, list[Expr]]:
     """Call argsをマトリックス名とインデックスに分割する."""
-    rank = len(op.out.dims)
+    rank = len(op.out.shape)
     operand_count = 3
     if len(args) == rank:
         return None, args
@@ -36,7 +36,7 @@ def split_call_args(
 
 
 def collect_function_args(
-    ast: ForLoop, domain_exprs: Mapping[str, MatrixOp]
+    ast: ForLoop, domain_exprs: Mapping[str, Compute]
 ) -> list[str]:
     """ASTを走査して関数の引数（マトリックス名）を収集する."""
     names: list[str] = []
@@ -60,8 +60,8 @@ def collect_function_args(
             for name in matrix_names:
                 add_unique(names, name)
         else:
-            add_unique(fallback, op.left.name)
-            add_unique(fallback, op.right.name)
+            add_unique(fallback, op.a.name)
+            add_unique(fallback, op.b.name)
             add_unique(fallback, op.out.name)
 
     def walk(body: Body) -> None:

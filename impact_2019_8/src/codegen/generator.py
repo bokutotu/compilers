@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from ast_types import Body, ForLoop, User
-from ir_types import MatrixOp
+from ir_types_new import Compute
 
 from .args import collect_function_args
 from .expr import generate_cond
@@ -16,7 +16,7 @@ class CCodeGenerator:
     """ForLoopからC言語コードを生成するクラス."""
 
     def __init__(
-        self, domain_exprs: Mapping[str, MatrixOp], function_name: str
+        self, domain_exprs: Mapping[str, Compute], function_name: str
     ) -> None:
         self._domain_exprs = dict(domain_exprs)
         self._function_name = function_name
@@ -75,7 +75,7 @@ class CCodeGenerator:
             raise ValueError(f"Unknown body type: {type(body)}")
 
 
-def isl_ast_to_c(ast: ForLoop, domain_exprs: Mapping[str, MatrixOp]) -> str:
+def isl_ast_to_c(ast: ForLoop, domain_exprs: Mapping[str, Compute]) -> str:
     """ForLoopからC言語コードを生成する."""
     generator = CCodeGenerator(domain_exprs=domain_exprs, function_name="kernel")
     return generator.generate(ast)

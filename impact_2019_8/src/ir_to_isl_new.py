@@ -65,6 +65,7 @@ def build_domain_and_schedule(
     func: PrimFunc,
     ctx: isl.Context | None = None
 ) -> tuple[isl.UnionSet, isl.UnionMap]:
+    ctx = ctx or isl.Context()
     domain = build_domain(func, ctx)
     schedule = build_schedule(func, ctx)
     return domain, schedule

@@ -2,7 +2,7 @@
 
 from src.ast_parser import parse_isl_ast
 from src.codegen import isl_ast_to_c
-from src.ir_types import Dim, MatrixOp, MatrixPtr
+from src.ir_types_new import Axis, Compute, Domain, Tensor
 
 
 def test_isl_ast_to_c():
@@ -15,14 +15,12 @@ def test_isl_ast_to_c():
     )
 
     ast = parse_isl_ast(ast_str)
-    op = MatrixOp(
-        name="S",
-        op="add",
-        left=MatrixPtr("A", dims=[Dim(10)]),
-        right=MatrixPtr("B", dims=[Dim(10)]),
-        out=MatrixPtr("C", dims=[Dim(10)]),
-    )
-    c_code = isl_ast_to_c(ast, domain_exprs={op.name: op})
+    a = Tensor("A", (10,))
+    b = Tensor("B", (10,))
+    c = Tensor("C", (10,))
+    domain = Domain((Axis("i", 10),))
+    compute = Compute(name="S", op="add", a=a, b=b, out=c, domain=domain)
+    c_code = isl_ast_to_c(ast, domain_exprs={compute.name: compute})
 
     expected = """\
 void kernel(int *A, int *B, int *C) {

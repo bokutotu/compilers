@@ -1,11 +1,11 @@
-"""MatrixOpからC言語の代入文を生成する関数群."""
+"""ComputeからC言語の代入文を生成する関数群."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 
 from ast_types import Call, Id
-from ir_types import MatrixOp, MatrixPtr
+from ir_types_new import Compute, Tensor
 
 from .args import split_call_args
 from .expr import generate_index_expr
@@ -18,56 +18,56 @@ OP_MAP = {
 }
 
 
-def format_matrix_access(matrix: MatrixPtr, indices: list[str]) -> str:
-    """マトリックスアクセス式を生成する."""
-    if len(indices) != len(matrix.dims):
+def format_tensor_access(tensor: Tensor, indices: list[str]) -> str:
+    """テンソルアクセス式を生成する."""
+    if len(indices) != len(tensor.shape):
         raise ValueError(
-            f"{matrix.name} expects {len(matrix.dims)} indices, got {len(indices)}"
+            f"{tensor.name} expects {len(tensor.shape)} indices, got {len(indices)}"
         )
     suffix = "".join(f"[{index}]" for index in indices)
-    return f"{matrix.name}{suffix}"
+    return f"{tensor.name}{suffix}"
 
 
-def _validate_indices(op: MatrixOp, indices: list[str]) -> None:
+def _validate_indices(op: Compute, indices: list[str]) -> None:
     """インデックス数を検証する."""
-    expected = len(op.out.dims)
+    expected = len(op.out.shape)
     if len(indices) != expected:
         raise ValueError(
             f"Index rank mismatch: expected {expected}, got {len(indices)}"
         )
 
 
-def _resolve_matrices(
-    op: MatrixOp, matrix_names: tuple[str, str, str] | None
-) -> tuple[MatrixPtr, MatrixPtr, MatrixPtr]:
-    """マトリックス名を解決する."""
-    if matrix_names is None:
-        return op.left, op.right, op.out
-    left_name, right_name, out_name = matrix_names
+def _resolve_tensors(
+    op: Compute, tensor_names: tuple[str, str, str] | None
+) -> tuple[Tensor, Tensor, Tensor]:
+    """テンソル名を解決する."""
+    if tensor_names is None:
+        return op.a, op.b, op.out
+    a_name, b_name, out_name = tensor_names
     return (
-        MatrixPtr(name=left_name, dims=op.left.dims),
-        MatrixPtr(name=right_name, dims=op.right.dims),
-        MatrixPtr(name=out_name, dims=op.out.dims),
+        Tensor(name=a_name, shape=op.a.shape),
+        Tensor(name=b_name, shape=op.b.shape),
+        Tensor(name=out_name, shape=op.out.shape),
     )
 
 
 def generate_op_assignment(
-    op: MatrixOp,
+    op: Compute,
     indices: list[str],
-    matrix_names: tuple[str, str, str] | None,
+    tensor_names: tuple[str, str, str] | None,
 ) -> str:
-    """MatrixOpを代入式に変換する."""
+    """Computeを代入式に変換する."""
     if op.op not in OP_MAP:
         raise ValueError(f"Unsupported op: {op.op}")
     _validate_indices(op, indices)
-    left, right, out = _resolve_matrices(op, matrix_names)
-    out_ref = format_matrix_access(out, indices)
-    left_ref = format_matrix_access(left, indices)
-    right_ref = format_matrix_access(right, indices)
-    return f"{out_ref} = {left_ref} {OP_MAP[op.op]} {right_ref}"
+    a, b, out = _resolve_tensors(op, tensor_names)
+    out_ref = format_tensor_access(out, indices)
+    a_ref = format_tensor_access(a, indices)
+    b_ref = format_tensor_access(b, indices)
+    return f"{out_ref} = {a_ref} {OP_MAP[op.op]} {b_ref}"
 
 
-def generate_user_stmt(call: Call, domain_exprs: Mapping[str, MatrixOp]) -> str:
+def generate_user_stmt(call: Call, domain_exprs: Mapping[str, Compute]) -> str:
     """ユーザー文をIRに基づいてC文に変換する."""
     if not call.args:
         raise ValueError("User call must have a statement id")
@@ -77,6 +77,6 @@ def generate_user_stmt(call: Call, domain_exprs: Mapping[str, MatrixOp]) -> str:
     op = domain_exprs.get(stmt_id.name)
     if op is None:
         raise ValueError(f"Unknown statement id: {stmt_id.name}")
-    matrix_names, index_exprs = split_call_args(op, call.args[1:])
+    tensor_names, index_exprs = split_call_args(op, call.args[1:])
     indices = [generate_index_expr(arg) for arg in index_exprs]
-    return f"{generate_op_assignment(op, indices, matrix_names)};"
+    return f"{generate_op_assignment(op, indices, tensor_names)};"
