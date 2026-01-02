@@ -1,12 +1,7 @@
 """ast_parserのテスト."""
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from ast_parser import parse_isl_ast
-from ast_types import BinOp, Call, ForLoop, Id, User, Val
+from src.ast_parser import parse_isl_ast
+from src.ast_types import BinOp, Call, ForLoop, Id, User, Val
 
 
 def test_parse_simple_for_loop() -> None:

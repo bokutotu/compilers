@@ -1,10 +1,10 @@
 """PrimFuncからCコードを生成するコンパイラ."""
 
-from ast_parser import parse_isl_ast
-from codegen import isl_ast_to_c
-from ir_to_isl import build_domain_and_schedule
-from ir_types import PrimFunc
-from isl_ast import build_ast_from_domain_and_schedule
+from src.ast_parser import parse_isl_ast
+from src.codegen import isl_ast_to_c
+from src.ir_to_isl import build_domain_and_schedule
+from src.ir_types import PrimFunc
+from src.isl_ast import build_ast_from_domain_and_schedule
 
 
 def compile(func: PrimFunc) -> str:

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from ast_types import Body, ForLoop, User
-from ir_types import PrimFunc
+from src.ast_types import Body, ForLoop, User
+from src.ir_types import PrimFunc
 
 from .expr import generate_cond
 from .ops import generate_user_stmt
@@ -62,7 +62,10 @@ class CCodeGenerator:
         if isinstance(body, User):
             indent = self._indent()
             stmt = generate_user_stmt(body.expr, self._func.compute)
-            return f"{indent}{stmt}"
+            if not stmt:
+                return ""
+            lines = stmt.splitlines()
+            return "\n".join(f"{indent}{line}" for line in lines)
         elif isinstance(body, ForLoop):
             return self._generate_for_loop(body)
         else:

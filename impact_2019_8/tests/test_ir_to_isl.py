@@ -3,7 +3,17 @@
 import islpy as isl
 
 from src.ir_to_isl import build_domain, build_domain_and_schedule, build_schedule
-from src.ir_types import Axis, Compute, Domain, PrimFunc, Schedule, Tensor
+from src.ir_types import (
+    Axis,
+    BinaryOp,
+    Compute,
+    Domain,
+    Load,
+    PrimFunc,
+    Schedule,
+    Store,
+    Tensor,
+)
 
 
 def _make_func(axes: tuple[Axis, ...]) -> PrimFunc:
@@ -15,14 +25,16 @@ def _make_func(axes: tuple[Axis, ...]) -> PrimFunc:
         name="kernel",
         compute=Compute(
             name="S",
-            op="add",
-            a=a,
-            b=b,
-            out=out,
             domain=Domain(axes),
-            a_index=axis_names,
-            b_index=axis_names,
-            out_index=axis_names,
+            stmt=Store(
+                target=out,
+                index=axis_names,
+                value=BinaryOp(
+                    op="add",
+                    left=Load(tensor=a, index=axis_names),
+                    right=Load(tensor=b, index=axis_names),
+                ),
+            ),
         ),
         schedule=Schedule(loop_order=axis_names),
         params=(a, b, out),

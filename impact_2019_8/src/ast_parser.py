@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from ast_types import BinOp, Body, Call, Expr, ForLoop, Id, User, Val
+from src.ast_types import BinOp, Body, Call, Expr, ForLoop, Id, User, Val
 
 
 @dataclass
@@ -102,6 +102,10 @@ class Parser:
 
     def _parse_body(self) -> Body:
         """bodyをパースする."""
+        # bodyの開始位置を保存（ネストしたForLoopの場合に巻き戻すため）
+        self._skip_whitespace()
+        body_start = self.pos
+
         self._expect("{")
         key = self._parse_identifier()
         self._expect(":")
@@ -113,9 +117,8 @@ class Parser:
             self._expect("}")
             return User(expr=expr)
         elif key == "iterator":
-            # ネストされたForLoop
-            self.pos -= len("iterator") + 1  # 巻き戻し
-            self.pos -= 1  # '{' も巻き戻し
+            # ネストされたForLoop - 開始位置に巻き戻し
+            self.pos = body_start
             return self._parse_for_loop()
         else:
             raise ValueError(f"Unknown body key: {key}")

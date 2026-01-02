@@ -1,7 +1,17 @@
 """compilerモジュールのテスト."""
 
 from src.compiler import compile
-from src.ir_types import Axis, Compute, Domain, PrimFunc, Schedule, Tensor
+from src.ir_types import (
+    Axis,
+    BinaryOp,
+    Compute,
+    Domain,
+    Load,
+    PrimFunc,
+    Schedule,
+    Store,
+    Tensor,
+)
 
 
 def test_compile():
@@ -15,14 +25,16 @@ def test_compile():
 
     compute = Compute(
         name="S",
-        op="add",
-        a=a,
-        b=b,
-        out=c,
         domain=domain,
-        a_index=("i",),
-        b_index=("i",),
-        out_index=("i",),
+        stmt=Store(
+            target=c,
+            index=("i",),
+            value=BinaryOp(
+                op="add",
+                left=Load(tensor=a, index=("i",)),
+                right=Load(tensor=b, index=("i",)),
+            ),
+        ),
     )
 
     func = PrimFunc(

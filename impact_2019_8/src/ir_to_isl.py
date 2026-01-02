@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import islpy as isl
 
-from ir_types import Axis, PrimFunc
+from src.ir_types import Axis, PrimFunc
 
 
 def _axis_dims(a: Axis) -> str:

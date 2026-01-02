@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, TypeAlias
 
-OpKind = Literal["add", "sub", "mul", "div"]
-Extent = int | str
-Shape = tuple[Extent, ...]
-Index = tuple[str, ...]
+Extent: TypeAlias = int | str
+Shape: TypeAlias = tuple[Extent, ...]
+Index: TypeAlias = tuple[str, ...]
+
+AxisKind: TypeAlias = Literal["spatial", "reduce"]
+
+BinOpKind: TypeAlias = Literal["add", "sub", "mul", "div"]
+ReduceOpKind: TypeAlias = Literal["add", "mul", "max", "min"]
+
+OpKind: TypeAlias = BinOpKind
 
 
 @dataclass(frozen=True)
@@ -19,7 +25,8 @@ class Tensor:
 class Axis:
     name: str
     extent: Extent
-    lower: int = 0
+    lower: int | str = 0
+    kind: AxisKind = "spatial"
 
 
 @dataclass(frozen=True)
@@ -33,16 +40,50 @@ class Schedule:
 
 
 @dataclass(frozen=True)
+class Const:
+    value: int
+
+
+@dataclass(frozen=True)
+class Load:
+    tensor: Tensor
+    index: Index
+
+
+@dataclass(frozen=True)
+class BinaryOp:
+    op: BinOpKind
+    left: Expr
+    right: Expr
+
+
+Expr: TypeAlias = Const | Load | BinaryOp
+
+
+@dataclass(frozen=True)
+class Store:
+    target: Tensor
+    index: Index
+    value: Expr
+
+
+@dataclass(frozen=True)
+class ReduceStore:
+    op: ReduceOpKind
+    target: Tensor
+    index: Index
+    value: Expr
+    init: Expr | None = None
+
+
+Stmt: TypeAlias = Store | ReduceStore
+
+
+@dataclass(frozen=True)
 class Compute:
     name: str
-    op: OpKind
-    a: Tensor
-    b: Tensor
-    out: Tensor
     domain: Domain
-    a_index: Index
-    b_index: Index
-    out_index: Index
+    stmt: Stmt
 
 
 @dataclass(frozen=True)

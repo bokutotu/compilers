@@ -2,7 +2,17 @@
 
 from src.ast_parser import parse_isl_ast
 from src.codegen import isl_ast_to_c
-from src.ir_types import Axis, Compute, Domain, PrimFunc, Schedule, Tensor
+from src.ir_types import (
+    Axis,
+    BinaryOp,
+    Compute,
+    Domain,
+    Load,
+    PrimFunc,
+    Schedule,
+    Store,
+    Tensor,
+)
 
 
 def test_isl_ast_to_c():
@@ -22,14 +32,16 @@ def test_isl_ast_to_c():
     schedule = Schedule(("i",))
     compute = Compute(
         name="S",
-        op="add",
-        a=a,
-        b=b,
-        out=c,
         domain=domain,
-        a_index=("i",),
-        b_index=("i",),
-        out_index=("i",),
+        stmt=Store(
+            target=c,
+            index=("i",),
+            value=BinaryOp(
+                op="add",
+                left=Load(tensor=a, index=("i",)),
+                right=Load(tensor=b, index=("i",)),
+            ),
+        ),
     )
     func = PrimFunc(
         name="kernel",
