@@ -44,12 +44,14 @@ def build_schedule(func: PrimFunc, ctx: isl.Context | None = None) -> isl.UnionM
     ctx = ctx or isl.Context()
     stmt_name = func.compute.name
     domain_axes = func.compute.domain.axis
+    loop_order = func.schedule.loop_order
     params = _collect_params(domain_axes)
     param_str = _make_param_str(params)
     index_names = ", ".join([a.name for a in domain_axes])
+    schedule_order = ", ".join(loop_order)
     constraints = " and ".join([_axis_dims(a) for a in domain_axes])
     return isl.UnionMap(
-        f"{param_str}{{ {stmt_name}[{index_names}] -> [{index_names}] : {constraints} }}",  # noqa: E501
+        f"{param_str}{{ {stmt_name}[{index_names}] -> [{schedule_order}] : {constraints} }}",  # noqa: E501
         ctx,
     )
 
