@@ -1,7 +1,7 @@
 """ast_parserのテスト."""
 
-from src.ast_parser import parse_isl_ast
-from src.ast_types import BinOp, Call, ForLoop, Id, User, Val
+from ast_types import BinOp, Call, ForLoop, Id, User, Val
+from isl_ast_parser import parse_isl_ast
 
 
 def test_parse_simple_for_loop() -> None:

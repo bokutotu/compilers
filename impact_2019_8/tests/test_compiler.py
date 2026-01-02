@@ -1,7 +1,7 @@
 """compilerモジュールのテスト."""
 
-from src.compiler import compile
-from src.ir_types import (
+from compiler import compile
+from ir_types import (
     Axis,
     BinaryOp,
     Compute,

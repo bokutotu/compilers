@@ -1,8 +1,7 @@
 """isl_ast_to_cモジュールのテスト."""
 
-from src.ast_parser import parse_isl_ast
-from src.codegen import isl_ast_to_c
-from src.ir_types import (
+from codegen import isl_ast_to_c
+from ir_types import (
     Axis,
     BinaryOp,
     Compute,
@@ -13,6 +12,7 @@ from src.ir_types import (
     Store,
     Tensor,
 )
+from isl_ast_parser import parse_isl_ast
 
 
 def test_isl_ast_to_c():

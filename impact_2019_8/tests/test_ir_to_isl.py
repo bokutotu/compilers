@@ -2,8 +2,8 @@
 
 import islpy as isl
 
-from src.ir_to_isl import build_domain, build_domain_and_schedule, build_schedule
-from src.ir_types import (
+from ir_to_isl import build_domain, build_domain_and_schedule, build_schedule
+from ir_types import (
     Axis,
     BinaryOp,
     Compute,

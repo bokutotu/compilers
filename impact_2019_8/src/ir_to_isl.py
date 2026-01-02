@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import islpy as isl
 
-from src.ir_types import Axis, PrimFunc
+from ir_types import Axis, PrimFunc
 
 
 def _axis_dims(a: Axis) -> str:
@@ -10,7 +10,6 @@ def _axis_dims(a: Axis) -> str:
 
 
 def _collect_params(axes: tuple[Axis, ...]) -> list[str]:
-    """軸のextentとlowerからシンボリックパラメータを収集する"""
     params: list[str] = []
     for axis in axes:
         if isinstance(axis.extent, str) and axis.extent not in params:
@@ -21,7 +20,6 @@ def _collect_params(axes: tuple[Axis, ...]) -> list[str]:
 
 
 def _make_param_str(params: list[str]) -> str:
-    """ISL形式のパラメータ文字列を作成する"""
     if not params:
         return ""
     return f"[{', '.join(params)}] -> "

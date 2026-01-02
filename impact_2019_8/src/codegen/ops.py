@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from src.ast_types import Call
-from src.ir_types import (
+from ast_types import Call
+from ir_types import (
     BinaryOp,
     BinOpKind,
     Compute,
@@ -143,6 +143,13 @@ def generate_user_stmt(call: Call, compute: Compute) -> str:
         )
         value = _generate_ir_expr(stmt.value, axis_to_var)
 
+        # TODO: 現在の実装は毎イテレーションでif文を評価するため非効率
+        # - SIMD化が阻害される
+        # - 分岐予測ミスが発生しやすい
+        # 改善案:
+        # 1. ループ分割: 初期化を別ループとして生成
+        # 2. ループピーリング: 最初のイテレーションを分離
+        # ISLで初期化を別statementとして扱い、依存関係を定義するのが本筋
         lines: list[str] = []
         if stmt.init is not None:
             cond = _generate_reduction_init_cond(compute, stmt.index, axis_to_var)

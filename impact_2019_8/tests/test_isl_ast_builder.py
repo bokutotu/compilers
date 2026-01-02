@@ -2,7 +2,7 @@
 
 import islpy as isl
 
-from src.isl_ast import build_ast_from_domain_and_schedule
+from isl_ast import build_ast_from_domain_and_schedule
 
 
 def test_build_ast_from_domain_and_schedule():

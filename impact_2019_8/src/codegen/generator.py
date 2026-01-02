@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from src.ast_types import Body, ForLoop, User
-from src.ir_types import PrimFunc
+from ast_types import Body, ForLoop, User
+from ir_types import PrimFunc
 
 from .expr import generate_cond
 from .ops import generate_user_stmt

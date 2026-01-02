@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.ast_types import BinOp, Call, Expr, Id, Val
+from ast_types import BinOp, Call, Expr, Id, Val
 
 OP_MAP = {
     "add": "+",
