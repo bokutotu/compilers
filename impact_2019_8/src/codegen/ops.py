@@ -40,6 +40,14 @@ _UPDATE_OP: dict[str, str] = {
 }
 
 
+def _wrap_if_needed(expr: str) -> str:
+    """式が演算子を含む場合、括弧で囲む."""
+    # 空白を含む場合は演算子がある可能性が高い
+    if " " in expr:
+        return f"({expr})"
+    return expr
+
+
 def _format_tensor_access(tensor: Tensor, indices: list[str]) -> str:
     if len(indices) != len(tensor.shape):
         raise ValueError(
@@ -52,7 +60,8 @@ def _format_tensor_access(tensor: Tensor, indices: list[str]) -> str:
     if len(indices) == 1:
         return f"{tensor.name}[{indices[0]}]"
 
-    offset = indices[0]
+    # 最初のインデックスが複雑な式の場合は括弧で囲む
+    offset = _wrap_if_needed(indices[0])
     for dim in range(1, len(indices)):
         extent = tensor.shape[dim]
         # extentがExprの場合は文字列化
@@ -62,7 +71,7 @@ def _format_tensor_access(tensor: Tensor, indices: list[str]) -> str:
             extent_str = str(extent.value)
         else:
             extent_str = str(extent)
-        offset = f"({offset}*{extent_str} + {indices[dim]})"
+        offset = f"({offset}*{extent_str} + {_wrap_if_needed(indices[dim])})"
     return f"{tensor.name}[{offset}]"
 
 

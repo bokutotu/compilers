@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ast_types import BinOp, Body, Call, Expr, ForLoop, Id, UnaryOp, User, Val
+from ast_types import BinOp, Block, Body, Call, Expr, ForLoop, Id, UnaryOp, User, Val
 from isl_ast_lexer import Token, TokenType, tokenize
+
+AstResult = ForLoop | Block
 
 
 @dataclass
@@ -13,9 +15,35 @@ class AstParser:
     tokens: list[Token]
     pos: int = 0
 
-    def parse(self) -> ForLoop:
-        """トークン列をパースしてForLoopを返す."""
+    def parse(self) -> AstResult:
+        """トークン列をパースしてForLoopまたはBlockを返す."""
+        # トップレベルがリスト [ ... ] の場合はBlock
+        if self._peek(TokenType.LBRACKET):
+            return self._parse_block()
         return self._parse_for_loop()
+
+    def _parse_block(self) -> Block:
+        """ForLoopのリストをBlockとしてパースする（入れ子も処理）."""
+        self._expect(TokenType.LBRACKET)
+        loops: list[ForLoop] = []
+
+        if not self._peek(TokenType.RBRACKET):
+            loops.extend(self._parse_block_element())
+            while self._peek(TokenType.COMMA):
+                self._expect(TokenType.COMMA)
+                loops.extend(self._parse_block_element())
+
+        self._expect(TokenType.RBRACKET)
+        return Block(stmts=tuple(loops))
+
+    def _parse_block_element(self) -> list[ForLoop]:
+        """ブロック要素をパースする（ForLoopまたは入れ子Block）."""
+        if self._peek(TokenType.LBRACKET):
+            # 入れ子のBlock - 展開してリストに追加
+            nested_block = self._parse_block()
+            return list(nested_block.stmts)
+        else:
+            return [self._parse_for_loop()]
 
     def _current(self) -> Token:
         """現在のトークンを取得する."""
@@ -168,7 +196,7 @@ class AstParser:
         )
 
 
-def parse_isl_ast(ast_str: str) -> ForLoop:
+def parse_isl_ast(ast_str: str) -> AstResult:
     """ISL AST文字列をパースする."""
     tokens = tokenize(ast_str)
     parser = AstParser(tokens=tokens)

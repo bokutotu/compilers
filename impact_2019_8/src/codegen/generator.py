@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from ast_types import Body, Call, ForLoop, Id, User
+from ast_types import Block, Body, Call, ForLoop, Id, User
 from ir_types import Compute, PrimFunc
 
 from .expr import generate_cond
 from .ops import generate_user_stmt
+
+AstInput = ForLoop | Block
 
 
 class CCodeGenerator:
@@ -20,17 +22,25 @@ class CCodeGenerator:
             c.name: c for c in func.computes
         }
 
-    def generate(self, ast: ForLoop) -> str:
-        """ForLoopからC言語コードを生成する."""
+    def generate(self, ast: AstInput) -> str:
+        """ForLoopまたはBlockからC言語コードを生成する."""
         args = [tensor.name for tensor in self._func.params]
         args_str = ", ".join(f"int *{name}" for name in args) if args else "void"
         lines = [
             f"void {self._func.name}({args_str}) {{",
         ]
         self._indent_level = 1
-        lines.append(self._generate_for_loop(ast))
+        if isinstance(ast, Block):
+            lines.append(self._generate_block(ast))
+        else:
+            lines.append(self._generate_for_loop(ast))
         lines.append("}")
         return "\n".join(lines)
+
+    def _generate_block(self, block: Block) -> str:
+        """Blockを複数のforループに変換する."""
+        loop_strs = [self._generate_for_loop(loop) for loop in block.stmts]
+        return "\n".join(loop_strs)
 
     def _indent(self) -> str:
         """現在のインデントを返す."""
@@ -87,7 +97,7 @@ class CCodeGenerator:
             raise ValueError(f"Unknown body type: {type(body)}")
 
 
-def isl_ast_to_c(ast: ForLoop, func: PrimFunc) -> str:
-    """ForLoopからC言語コードを生成する."""
+def isl_ast_to_c(ast: AstInput, func: PrimFunc) -> str:
+    """ForLoopまたはBlockからC言語コードを生成する."""
     generator = CCodeGenerator(func)
     return generator.generate(ast)

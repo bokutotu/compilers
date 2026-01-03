@@ -57,7 +57,7 @@ class User:
     expr: Call
 
 
-Body = Union["User", "ForLoop"]
+Body = Union["User", "ForLoop", "Block"]
 
 
 @dataclass(frozen=True)
@@ -69,3 +69,10 @@ class ForLoop:
     cond: BinOp
     inc: Val
     body: Body
+
+
+@dataclass(frozen=True)
+class Block:
+    """複数の文のシーケンス."""
+
+    stmts: tuple[ForLoop, ...]
