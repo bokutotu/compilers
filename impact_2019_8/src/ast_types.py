@@ -57,7 +57,15 @@ class User:
     expr: Call
 
 
-Body = Union["User", "ForLoop", "Block"]
+@dataclass(frozen=True)
+class Guard:
+    """条件付き実行（if文）."""
+
+    cond: BinOp  # 条件式
+    then: "Body"  # 条件が真の場合に実行される本体
+
+
+Body = Union["User", "ForLoop", "Block", "Guard"]
 
 
 @dataclass(frozen=True)
@@ -73,6 +81,6 @@ class ForLoop:
 
 @dataclass(frozen=True)
 class Block:
-    """複数の文のシーケンス."""
+    """複数の文のシーケンス（ForLoop, User, または入れ子のBlockを含む）."""
 
-    stmts: tuple[ForLoop, ...]
+    stmts: tuple[Body, ...]

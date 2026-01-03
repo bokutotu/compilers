@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ast_types import Block, Body, Call, ForLoop, Id, User
+from ast_types import Block, Body, Call, ForLoop, Guard, Id, User
 from ir_types import Compute, PrimFunc
 
 from .expr import generate_cond
@@ -38,9 +38,9 @@ class CCodeGenerator:
         return "\n".join(lines)
 
     def _generate_block(self, block: Block) -> str:
-        """Blockを複数のforループに変換する."""
-        loop_strs = [self._generate_for_loop(loop) for loop in block.stmts]
-        return "\n".join(loop_strs)
+        """Blockを複数の文に変換する（ForLoop, User, または入れ子Block）."""
+        stmt_strs = [self._generate_body(stmt) for stmt in block.stmts]
+        return "\n".join(s for s in stmt_strs if s)
 
     def _indent(self) -> str:
         """現在のインデントを返す."""
@@ -93,8 +93,26 @@ class CCodeGenerator:
             return "\n".join(f"{indent}{line}" for line in lines)
         elif isinstance(body, ForLoop):
             return self._generate_for_loop(body)
+        elif isinstance(body, Block):
+            return self._generate_block(body)
+        elif isinstance(body, Guard):
+            return self._generate_guard(body)
         else:
             raise ValueError(f"Unknown body type: {type(body)}")
+
+    def _generate_guard(self, guard: Guard) -> str:
+        """Guard（条件付き実行）をif文に変換する."""
+        indent = self._indent()
+        cond_str = generate_cond(guard.cond)
+
+        lines = [f"{indent}if ({cond_str}) {{"]
+        self._indent_level += 1
+        body_str = self._generate_body(guard.then)
+        if body_str:
+            lines.append(body_str)
+        self._indent_level -= 1
+        lines.append(f"{indent}}}")
+        return "\n".join(lines)
 
 
 def isl_ast_to_c(ast: AstInput, func: PrimFunc) -> str:

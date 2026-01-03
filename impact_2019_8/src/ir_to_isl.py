@@ -124,9 +124,11 @@ def build_schedule(func: PrimFunc, ctx: isl.Context | None = None) -> isl.UnionM
     スケジュールマップを構築
     ISL Map: [Params] -> { Stmt[iters] -> [time_dims] : constraints }
 
-    複数のComputeがある場合、先頭にstatement IDを追加して実行順序を明示:
+    複数のComputeがある場合、末尾にstatement IDを追加して実行順序を明示:
     - 1つのCompute: S[i] -> [i]
-    - 複数のCompute: S1[i] -> [0, i], S2[j] -> [1, j]
+    - 複数のCompute: S1[i] -> [i, 0], S2[j] -> [j, 1]
+
+    stmt_idを末尾に置くことで、同じイテレータを持つループは融合可能になる。
     """
     ctx = ctx or isl.Context()
     u_map = isl.UnionMap("{ }", ctx)
@@ -141,9 +143,9 @@ def build_schedule(func: PrimFunc, ctx: isl.Context | None = None) -> isl.UnionM
         domain_iters = {it.name for it in compute.domain.iterators}
         sched_dims = [v for v in global_loop_order if v in domain_iters]
 
-        # 複数Computeの場合、先頭にstmt_idを追加
+        # 複数Computeの場合、末尾にstmt_idを追加（ループ融合を可能にするため）
         if add_stmt_id:
-            dst_tuple_str = f"[{stmt_id}, {', '.join(sched_dims)}]"
+            dst_tuple_str = f"[{', '.join(sched_dims)}, {stmt_id}]"
         else:
             dst_tuple_str = f"[{', '.join(sched_dims)}]"
         isl_str = f"{param_str} -> {{ {src_tuple_str} -> {dst_tuple_str} : {const_str} }}"

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ast_types import BinOp, Block, Body, Call, Expr, ForLoop, Id, UnaryOp, User, Val
+from ast_types import BinOp, Block, Body, Call, Expr, ForLoop, Guard, Id, UnaryOp, User, Val
 from isl_ast_lexer import Token, TokenType, tokenize
 
 AstResult = ForLoop | Block
@@ -125,6 +125,10 @@ class AstParser:
 
     def _parse_body(self) -> Body:
         """bodyをパースする."""
+        # bodyが配列の場合（融合されたループで複数ステートメントがある場合）
+        if self._peek(TokenType.LBRACKET):
+            return self._parse_body_list()
+
         # bodyの開始位置を保存（ネストしたForLoopの場合に巻き戻すため）
         body_start = self.pos
 
@@ -142,8 +146,33 @@ class AstParser:
             # ネストされたForLoop - 開始位置に巻き戻し
             self.pos = body_start
             return self._parse_for_loop()
+        elif key == "guard":
+            # 条件付き実行（if文）
+            cond_expr = self._parse_expr()
+            if not isinstance(cond_expr, BinOp):
+                raise ValueError("guard condition must be a BinOp")
+            self._expect(TokenType.COMMA)
+            self._expect_ident("then")
+            self._expect(TokenType.COLON)
+            then_body = self._parse_body()
+            self._expect(TokenType.RBRACE)
+            return Guard(cond=cond_expr, then=then_body)
         else:
             raise ValueError(f"Unknown body key: {key}")
+
+    def _parse_body_list(self) -> Block:
+        """body配列をBlockとしてパースする（融合されたループ用）."""
+        self._expect(TokenType.LBRACKET)
+        bodies: list[Body] = []
+
+        if not self._peek(TokenType.RBRACKET):
+            bodies.append(self._parse_body())
+            while self._peek(TokenType.COMMA):
+                self._expect(TokenType.COMMA)
+                bodies.append(self._parse_body())
+
+        self._expect(TokenType.RBRACKET)
+        return Block(stmts=tuple(bodies))
 
     def _parse_for_loop(self) -> ForLoop:
         """ForLoopをパースする."""

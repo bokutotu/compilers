@@ -233,13 +233,12 @@ def test_compile_chained_computes():
 
     c_code = compile(func)
 
+    # ループが融合され、1つのforループ内に両方のステートメントが含まれる
     expected = """\
 void chained(int *A, int *B, int *C) {
-    for (int c1 = 0; c1 <= 9; c1++) {
-        B[c1] = A[c1] + 1;
-    }
-    for (int c1 = 0; c1 <= 9; c1++) {
-        C[c1] = B[c1] * 2;
+    for (int c0 = 0; c0 <= 9; c0++) {
+        B[c0] = A[c0] + 1;
+        C[c0] = B[c0] * 2;
     }
 }"""
 
@@ -309,16 +308,13 @@ def test_compile_triple_computes():
 
     c_code = compile(func)
 
+    # 3つのループが融合され、1つのforループ内に全ステートメントが含まれる
     expected = """\
 void triple(int *A, int *B, int *C, int *D) {
-    for (int c1 = 0; c1 <= 7; c1++) {
-        B[c1] = A[c1];
-    }
-    for (int c1 = 0; c1 <= 7; c1++) {
-        C[c1] = B[c1];
-    }
-    for (int c1 = 0; c1 <= 7; c1++) {
-        D[c1] = C[c1];
+    for (int c0 = 0; c0 <= 7; c0++) {
+        B[c0] = A[c0];
+        C[c0] = B[c0];
+        D[c0] = C[c0];
     }
 }"""
 
@@ -374,13 +370,14 @@ def test_compile_independent_computes():
 
     c_code = compile(func)
 
+    # ループが融合され、S2は条件付き（guard）で実行される
     expected = """\
 void independent(int *A, int *B, int *C, int *D) {
-    for (int c1 = 0; c1 <= 9; c1++) {
-        B[c1] = A[c1];
-    }
-    for (int c1 = 0; c1 <= 7; c1++) {
-        D[c1] = C[c1];
+    for (int c0 = 0; c0 <= 9; c0++) {
+        B[c0] = A[c0];
+        if (c0 <= 7) {
+            D[c0] = C[c0];
+        }
     }
 }"""
 
@@ -451,16 +448,15 @@ def test_compile_2d_multi_compute():
 
     c_code = compile(func)
 
+    # 2次元ループが融合され、S2は条件付き（guard）で実行される
     expected = """\
 void stencil_2d(int *A, int *B, int *C) {
-    for (int c1 = 0; c1 <= 3; c1++) {
-        for (int c2 = 0; c2 <= 3; c2++) {
-            B[(c1*4 + c2)] = A[(c1*4 + c2)];
-        }
-    }
-    for (int c1 = 1; c1 <= 3; c1++) {
-        for (int c2 = 0; c2 <= 3; c2++) {
-            C[(c1*4 + c2)] = B[(c1*4 + c2)] + B[((c1 - 1)*4 + c2)];
+    for (int c0 = 0; c0 <= 3; c0++) {
+        for (int c1 = 0; c1 <= 3; c1++) {
+            B[(c0*4 + c1)] = A[(c0*4 + c1)];
+            if (c0 >= 1) {
+                C[(c0*4 + c1)] = B[(c0*4 + c1)] + B[((c0 - 1)*4 + c1)];
+            }
         }
     }
 }"""

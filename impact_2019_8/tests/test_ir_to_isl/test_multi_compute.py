@@ -92,13 +92,13 @@ def test_multi_compute_domain():
 
 
 def test_multi_compute_schedule():
-    """複数Computeのスケジュールテスト: S1[i] -> [0, i], S2[j] -> [1, j]."""
+    """複数Computeのスケジュールテスト: S1[i] -> [i, 0], S2[j] -> [j, 1]."""
     ctx = isl.Context()
     func = _make_chained_computes_func()
     schedule = build_schedule(func, ctx)
 
     expected = isl.UnionMap(
-        "[N] -> { S1[i] -> [0, i] : 0 <= i < N; S2[j] -> [1, j] : 0 <= j < N }",
+        "[N] -> { S1[i] -> [i, 0] : 0 <= i < N; S2[j] -> [j, 1] : 0 <= j < N }",
         ctx,
     )
     assert schedule.is_equal(expected)
@@ -226,9 +226,9 @@ def test_triple_compute_schedule():
     schedule = build_schedule(func, ctx)
 
     expected = isl.UnionMap(
-        "[N] -> { S1[i] -> [0, i] : 0 <= i < N; "
-        "S2[j] -> [1, j] : 0 <= j < N; "
-        "S3[k] -> [2, k] : 0 <= k < N }",
+        "[N] -> { S1[i] -> [i, 0] : 0 <= i < N; "
+        "S2[j] -> [j, 1] : 0 <= j < N; "
+        "S3[k] -> [k, 2] : 0 <= k < N }",
         ctx,
     )
     assert schedule.is_equal(expected)
@@ -394,8 +394,8 @@ def test_2d_multi_compute_schedule():
     schedule = build_schedule(func, ctx)
 
     expected = isl.UnionMap(
-        "[N, M] -> { S1[i, j] -> [0, i, j] : 0 <= i < N and 0 <= j < M; "
-        "S2[i, j] -> [1, i, j] : 1 <= i < N and 0 <= j < M }",
+        "[N, M] -> { S1[i, j] -> [i, j, 0] : 0 <= i < N and 0 <= j < M; "
+        "S2[i, j] -> [i, j, 1] : 1 <= i < N and 0 <= j < M }",
         ctx,
     )
     assert schedule.is_equal(expected)
