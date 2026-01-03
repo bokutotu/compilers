@@ -22,7 +22,15 @@ class Val:
 
 
 # 式の型（再帰的に定義）
-Expr = Union["Id", "Val", "BinOp", "Call"]
+Expr = Union["Id", "Val", "UnaryOp", "BinOp", "Call"]
+
+
+@dataclass(frozen=True)
+class UnaryOp:
+    """単項演算（マイナスなど）."""
+
+    op: str  # "minus" など
+    operand: Expr
 
 
 @dataclass(frozen=True)

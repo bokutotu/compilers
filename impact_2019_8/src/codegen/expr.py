@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ast_types import BinOp, Call, Expr, Id, Val
+from ast_types import BinOp, Call, Expr, Id, UnaryOp, Val
 
 OP_MAP = {
     "add": "+",
@@ -16,6 +16,10 @@ OP_MAP = {
     "eq": "==",
 }
 
+UNARY_OP_MAP = {
+    "minus": "-",
+}
+
 
 def generate_expr(expr: Expr) -> str:
     """式をC言語の式に変換する."""
@@ -23,6 +27,10 @@ def generate_expr(expr: Expr) -> str:
         return expr.name
     elif isinstance(expr, Val):
         return str(expr.value)
+    elif isinstance(expr, UnaryOp):
+        operand = generate_expr(expr.operand)
+        op = UNARY_OP_MAP.get(expr.op, expr.op)
+        return f"({op}{operand})"
     elif isinstance(expr, BinOp):
         left = generate_expr(expr.left)
         right = generate_expr(expr.right)

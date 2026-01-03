@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ast_types import BinOp, Body, Call, Expr, ForLoop, Id, User, Val
+from ast_types import BinOp, Body, Call, Expr, ForLoop, Id, UnaryOp, User, Val
 from isl_ast_lexer import Token, TokenType, tokenize
 
 
@@ -70,10 +70,14 @@ class AstParser:
 
             if op == "call":
                 return Call(args=args)
-            else:
-                if len(args) != 2:
-                    raise ValueError(f"BinOp expects 2 args, got {len(args)}")
+            elif len(args) == 1:
+                # 単項演算子（minus など）
+                return UnaryOp(op=op, operand=args[0])
+            elif len(args) == 2:
+                # 二項演算子
                 return BinOp(op=op, left=args[0], right=args[1])
+            else:
+                raise ValueError(f"Unexpected number of args: {len(args)} for op {op}")
         else:
             raise ValueError(f"Unknown expression key: {key}")
 
