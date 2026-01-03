@@ -11,11 +11,14 @@ from ir_types import (
     Iterator,
     Load,
     PrimFunc,
+    ReduceStore,
     Schedule,
     Store,
     Tensor,
     Var,
 )
+from optimization_types import Tile
+from optimize import apply_tiling
 
 
 def test_compile():
@@ -456,6 +459,73 @@ void stencil_2d(int *A, int *B, int *C) {
             B[(c0*4 + c1)] = A[(c0*4 + c1)];
             if (c0 >= 1) {
                 C[(c0*4 + c1)] = B[(c0*4 + c1)] + B[((c0 - 1)*4 + c1)];
+            }
+        }
+    }
+}"""
+
+    assert c_code == expected
+
+
+def test_compile_gemm_tiled():
+    """GEMMをi/jで異なるタイル幅でタイル化してコンパイルする."""
+    m = 1024
+    n = 2048
+    k = 4096
+    a = Tensor("A", (IntConst(m), IntConst(k)))
+    b = Tensor("B", (IntConst(k), IntConst(n)))
+    c = Tensor("C", (IntConst(m), IntConst(n)))
+
+    domain = Domain(
+        params=(),
+        iterators=(Iterator("i"), Iterator("j"), Iterator("k", kind="reduce")),
+        constraints=(
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("i")),
+            Compare(lhs=Var("i"), op="LT", rhs=IntConst(m)),
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("j")),
+            Compare(lhs=Var("j"), op="LT", rhs=IntConst(n)),
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("k")),
+            Compare(lhs=Var("k"), op="LT", rhs=IntConst(k)),
+        ),
+    )
+
+    compute = Compute(
+        name="S",
+        domain=domain,
+        body=ReduceStore(
+            op="Sum",
+            access=Access(tensor=c, index=(Var("i"), Var("j"))),
+            value=BinaryOp(
+                op="Mul",
+                lhs=Load(access=Access(tensor=a, index=(Var("i"), Var("k")))),
+                rhs=Load(access=Access(tensor=b, index=(Var("k"), Var("j")))),
+            ),
+            init=IntConst(0),
+        ),
+    )
+
+    func = PrimFunc(
+        name="gemm_tiled",
+        computes=(compute,),
+        schedule=Schedule(("i", "j", "k")),
+        params=(a, b, c),
+    )
+
+    tiled_schedule = apply_tiling(func, [Tile("i", 32), Tile("j", 64)])
+
+    c_code = compile(func, schedule=tiled_schedule)
+
+    expected = """\
+void gemm_tiled(int *A, int *B, int *C) {
+    for (int c0 = 0; c0 <= 1023; c0 += 32) {
+        for (int c1 = 0; c1 <= 2047; c1 += 64) {
+            for (int c2 = 0; c2 <= 4095; c2++) {
+                for (int c3 = 0; c3 <= 31; c3++) {
+                    for (int c4 = 0; c4 <= 63; c4++) {
+                        if (c2 == 0) C[(((c0 + c3))*2048 + ((c1 + c4)))] = 0;
+                        C[(((c0 + c3))*2048 + ((c1 + c4)))] += A[(((c0 + c3))*4096 + c2)] * B[(c2*2048 + ((c1 + c4)))];
+                    }
+                }
             }
         }
     }
