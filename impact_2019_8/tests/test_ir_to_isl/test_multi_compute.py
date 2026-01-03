@@ -85,9 +85,7 @@ def test_multi_compute_domain():
     func = _make_chained_computes_func()
     domain = build_domain(func, ctx)
 
-    expected = isl.UnionSet(
-        "[N] -> { S1[i] : 0 <= i < N; S2[j] : 0 <= j < N }", ctx
-    )
+    expected = isl.UnionSet("[N] -> { S1[i] : 0 <= i < N; S2[j] : 0 <= j < N }", ctx)
     assert domain.is_equal(expected)
 
 

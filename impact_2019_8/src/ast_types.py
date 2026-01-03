@@ -62,7 +62,7 @@ class Guard:
     """条件付き実行（if文）."""
 
     cond: BinOp  # 条件式
-    then: "Body"  # 条件が真の場合に実行される本体
+    then: Body  # 条件が真の場合に実行される本体
 
 
 Body = Union["User", "ForLoop", "Block", "Guard"]

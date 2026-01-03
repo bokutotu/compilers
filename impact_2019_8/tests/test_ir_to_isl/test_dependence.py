@@ -54,7 +54,9 @@ def _make_raw_dependence_func() -> PrimFunc:
                         lhs=Load(
                             access=Access(
                                 tensor=c,
-                                index=(BinaryOp(op="Sub", lhs=Var("i"), rhs=IntConst(1)),),
+                                index=(
+                                    BinaryOp(op="Sub", lhs=Var("i"), rhs=IntConst(1)),
+                                ),
                             )
                         ),
                         rhs=Load(access=Access(tensor=a, index=(Var("i"),))),
@@ -109,7 +111,9 @@ def _make_war_dependence_func() -> PrimFunc:
                         lhs=Load(
                             access=Access(
                                 tensor=c,
-                                index=(BinaryOp(op="Add", lhs=Var("i"), rhs=IntConst(1)),),
+                                index=(
+                                    BinaryOp(op="Add", lhs=Var("i"), rhs=IntConst(1)),
+                                ),
                             )
                         ),
                         rhs=Load(access=Access(tensor=a, index=(Var("i"),))),

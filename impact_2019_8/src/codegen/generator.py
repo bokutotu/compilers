@@ -18,9 +18,7 @@ class CCodeGenerator:
         self._func = func
         self._indent_level = 0
         # Compute名からComputeへのマッピングを作成
-        self._computes: dict[str, Compute] = {
-            c.name: c for c in func.computes
-        }
+        self._computes: dict[str, Compute] = {c.name: c for c in func.computes}
 
     def generate(self, ast: AstInput) -> str:
         """ForLoopまたはBlockからC言語コードを生成する."""
