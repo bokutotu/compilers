@@ -123,22 +123,31 @@ def build_schedule(func: PrimFunc, ctx: isl.Context | None = None) -> isl.UnionM
     """
     スケジュールマップを構築
     ISL Map: [Params] -> { Stmt[iters] -> [time_dims] : constraints }
+
+    複数のComputeがある場合、先頭にstatement IDを追加して実行順序を明示:
+    - 1つのCompute: S[i] -> [i]
+    - 複数のCompute: S1[i] -> [0, i], S2[j] -> [1, j]
     """
     ctx = ctx or isl.Context()
     u_map = isl.UnionMap("{ }", ctx)
-    
-    global_loop_order = func.schedule.loop_order
 
-    for compute in func.computes:
+    global_loop_order = func.schedule.loop_order
+    add_stmt_id = len(func.computes) >= 2
+
+    for stmt_id, compute in enumerate(func.computes):
         param_str, src_tuple_str, const_str = _build_header(compute)
-        
+
         # このドメインに含まれるイテレータのみを、global_loop_orderの順序で抽出
         domain_iters = {it.name for it in compute.domain.iterators}
         sched_dims = [v for v in global_loop_order if v in domain_iters]
-        
-        dst_tuple_str = f"[{', '.join(sched_dims)}]"
+
+        # 複数Computeの場合、先頭にstmt_idを追加
+        if add_stmt_id:
+            dst_tuple_str = f"[{stmt_id}, {', '.join(sched_dims)}]"
+        else:
+            dst_tuple_str = f"[{', '.join(sched_dims)}]"
         isl_str = f"{param_str} -> {{ {src_tuple_str} -> {dst_tuple_str} : {const_str} }}"
-        
+
         try:
             m = isl.UnionMap(isl_str, ctx)
             u_map = u_map.union(m)
@@ -252,3 +261,89 @@ def build_write_access(func: PrimFunc, ctx: isl.Context | None = None) -> isl.Un
 
 def build_read_access(func: PrimFunc, ctx: isl.Context | None = None) -> isl.UnionMap:
     return _build_access_map_generic(func, False, ctx or isl.Context())
+
+
+# ==========================================
+# 3. 依存関係解析 (Dependence Analysis)
+# ==========================================
+
+def compute_raw_dependence(
+    schedule: isl.UnionMap,
+    write_access: isl.UnionMap,
+    read_access: isl.UnionMap,
+) -> isl.UnionMap:
+    """
+    RAW (Read After Write) 依存関係を計算
+    フロー依存: 書き込み → 読み込み (同じ配列要素、書き込みが先)
+
+    Returns: { S_write[...] -> S_read[...] }
+    """
+    # 同じ配列要素へのアクセスペア: S_write -> S_read
+    same_access = write_access.apply_range(read_access.reverse())
+
+    # 時間順序: 書き込みが読み込みより前
+    before = schedule.lex_lt_union_map(schedule)
+
+    return same_access.intersect(before)
+
+
+def compute_war_dependence(
+    schedule: isl.UnionMap,
+    write_access: isl.UnionMap,
+    read_access: isl.UnionMap,
+) -> isl.UnionMap:
+    """
+    WAR (Write After Read) 依存関係を計算
+    反依存: 読み込み → 書き込み (同じ配列要素、読み込みが先)
+
+    Returns: { S_read[...] -> S_write[...] }
+    """
+    # 同じ配列要素へのアクセスペア: S_read -> S_write
+    same_access = read_access.apply_range(write_access.reverse())
+
+    # 時間順序: 読み込みが書き込みより前
+    before = schedule.lex_lt_union_map(schedule)
+
+    return same_access.intersect(before)
+
+
+def compute_waw_dependence(
+    schedule: isl.UnionMap,
+    write_access: isl.UnionMap,
+) -> isl.UnionMap:
+    """
+    WAW (Write After Write) 依存関係を計算
+    出力依存: 書き込み → 書き込み (同じ配列要素)
+
+    Returns: { S_write1[...] -> S_write2[...] }
+    """
+    # 同じ配列要素への書き込みペア
+    same_access = write_access.apply_range(write_access.reverse())
+
+    # 時間順序: 最初の書き込みが後の書き込みより前
+    # lex_lt は厳密な「より小さい」なので、自己ループ (S[i] -> S[i]) は
+    # schedule(S[i]) < schedule(S[i]) が偽となり自動的に除外される
+    before = schedule.lex_lt_union_map(schedule)
+
+    return same_access.intersect(before)
+
+
+def compute_all_dependences(
+    func: PrimFunc,
+    ctx: isl.Context | None = None,
+) -> dict[str, isl.UnionMap]:
+    """
+    すべての依存関係を計算
+
+    Returns: {"RAW": ..., "WAR": ..., "WAW": ...}
+    """
+    ctx = ctx or isl.Context()
+    schedule = build_schedule(func, ctx)
+    write_access = build_write_access(func, ctx)
+    read_access = build_read_access(func, ctx)
+
+    return {
+        "RAW": compute_raw_dependence(schedule, write_access, read_access),
+        "WAR": compute_war_dependence(schedule, write_access, read_access),
+        "WAW": compute_waw_dependence(schedule, write_access),
+    }
