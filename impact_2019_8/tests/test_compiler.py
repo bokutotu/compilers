@@ -2,46 +2,54 @@
 
 from compiler import compile
 from ir_types import (
-    AffineConstraint,
-    AffineExpr,
-    Axis,
+    Access,
     BinaryOp,
+    Compare,
     Compute,
     Domain,
+    IntConst,
+    Iterator,
     Load,
     PrimFunc,
     Schedule,
     Store,
     Tensor,
+    Var,
 )
 
 
 def test_compile():
     """PrimFuncをコンパイルできることをテストする."""
-    a = Tensor("A", (10,))
-    b = Tensor("B", (10,))
-    c = Tensor("C", (10,))
+    a = Tensor("A", (IntConst(10),))
+    b = Tensor("B", (IntConst(10),))
+    c = Tensor("C", (IntConst(10),))
 
-    domain = Domain((Axis("i", 10),))
+    domain = Domain(
+        params=(),
+        iterators=(Iterator("i"),),
+        constraints=(
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("i")),
+            Compare(lhs=Var("i"), op="LT", rhs=IntConst(10)),
+        ),
+    )
     schedule = Schedule(("i",))
 
     compute = Compute(
         name="S",
         domain=domain,
-        stmt=Store(
-            target=c,
-            index=("i",),
+        body=Store(
+            access=Access(tensor=c, index=(Var("i"),)),
             value=BinaryOp(
-                op="add",
-                left=Load(tensor=a, index=("i",)),
-                right=Load(tensor=b, index=("i",)),
+                op="Add",
+                lhs=Load(access=Access(tensor=a, index=(Var("i"),))),
+                rhs=Load(access=Access(tensor=b, index=(Var("i"),))),
             ),
         ),
     )
 
     func = PrimFunc(
         name="add_func",
-        compute=compute,
+        computes=(compute,),
         schedule=schedule,
         params=(a, b, c),
     )
@@ -60,40 +68,39 @@ void add_func(int *A, int *B, int *C) {
 
 def test_compile_triangular_domain():
     """三角行列ドメイン(j <= i)をコンパイルできることをテストする."""
-    a = Tensor("A", (4, 4))
-    b = Tensor("B", (4, 4))
-    c = Tensor("C", (4, 4))
-
-    # j <= i という制約
-    constraint = AffineConstraint(
-        lhs=AffineExpr.from_var("j"),
-        op="LE",
-        rhs=AffineExpr.from_var("i"),
-    )
+    a = Tensor("A", (IntConst(4), IntConst(4)))
+    b = Tensor("B", (IntConst(4), IntConst(4)))
+    c = Tensor("C", (IntConst(4), IntConst(4)))
 
     domain = Domain(
-        axis=(Axis("i", 4), Axis("j", 4)),
-        constraints=(constraint,),
+        params=(),
+        iterators=(Iterator("i"), Iterator("j")),
+        constraints=(
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("i")),
+            Compare(lhs=Var("i"), op="LT", rhs=IntConst(4)),
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("j")),
+            Compare(lhs=Var("j"), op="LT", rhs=IntConst(4)),
+            Compare(lhs=Var("j"), op="LE", rhs=Var("i")),  # j <= i
+        ),
     )
     schedule = Schedule(("i", "j"))
 
     compute = Compute(
         name="S",
         domain=domain,
-        stmt=Store(
-            target=c,
-            index=("i", "j"),
+        body=Store(
+            access=Access(tensor=c, index=(Var("i"), Var("j"))),
             value=BinaryOp(
-                op="add",
-                left=Load(tensor=a, index=("i", "j")),
-                right=Load(tensor=b, index=("i", "j")),
+                op="Add",
+                lhs=Load(access=Access(tensor=a, index=(Var("i"), Var("j")))),
+                rhs=Load(access=Access(tensor=b, index=(Var("i"), Var("j")))),
             ),
         ),
     )
 
     func = PrimFunc(
         name="triangular",
-        compute=compute,
+        computes=(compute,),
         schedule=schedule,
         params=(a, b, c),
     )
@@ -114,40 +121,44 @@ void triangular(int *A, int *B, int *C) {
 
 def test_compile_sum_constraint():
     """i + j < N の制約をコンパイルできることをテストする."""
-    a = Tensor("A", (4, 4))
-    b = Tensor("B", (4, 4))
-    c = Tensor("C", (4, 4))
+    a = Tensor("A", (IntConst(4), IntConst(4)))
+    b = Tensor("B", (IntConst(4), IntConst(4)))
+    c = Tensor("C", (IntConst(4), IntConst(4)))
 
     # i + j < 4 という制約（上三角の一部）
-    constraint = AffineConstraint(
-        lhs=AffineExpr.from_var("i") + "j",
-        op="LT",
-        rhs=AffineExpr.from_const(4),
-    )
-
     domain = Domain(
-        axis=(Axis("i", 4), Axis("j", 4)),
-        constraints=(constraint,),
+        params=(),
+        iterators=(Iterator("i"), Iterator("j")),
+        constraints=(
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("i")),
+            Compare(lhs=Var("i"), op="LT", rhs=IntConst(4)),
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("j")),
+            Compare(lhs=Var("j"), op="LT", rhs=IntConst(4)),
+            Compare(
+                lhs=BinaryOp(op="Add", lhs=Var("i"), rhs=Var("j")),
+                op="LT",
+                rhs=IntConst(4),
+            ),
+        ),
     )
     schedule = Schedule(("i", "j"))
 
     compute = Compute(
         name="S",
         domain=domain,
-        stmt=Store(
-            target=c,
-            index=("i", "j"),
+        body=Store(
+            access=Access(tensor=c, index=(Var("i"), Var("j"))),
             value=BinaryOp(
-                op="add",
-                left=Load(tensor=a, index=("i", "j")),
-                right=Load(tensor=b, index=("i", "j")),
+                op="Add",
+                lhs=Load(access=Access(tensor=a, index=(Var("i"), Var("j")))),
+                rhs=Load(access=Access(tensor=b, index=(Var("i"), Var("j")))),
             ),
         ),
     )
 
     func = PrimFunc(
         name="upper_triangular",
-        compute=compute,
+        computes=(compute,),
         schedule=schedule,
         params=(a, b, c),
     )

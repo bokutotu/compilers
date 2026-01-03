@@ -2,15 +2,19 @@
 
 from codegen import isl_ast_to_c
 from ir_types import (
-    Axis,
+    Access,
     BinaryOp,
+    Compare,
     Compute,
     Domain,
+    IntConst,
+    Iterator,
     Load,
     PrimFunc,
     Schedule,
     Store,
     Tensor,
+    Var,
 )
 from isl_ast_parser import parse_isl_ast
 
@@ -20,32 +24,37 @@ def test_isl_ast_to_c():
     ast_str = (
         "{ iterator: { id: c0 }, init: { val: 0 }, cond: { op: le, args: "
         "[ { id: c0 }, { val: 9 } ] }, inc: { val: 1 }, body: { user: "
-        "{ op: call, args: [ { id: S }, { id: A }, { id: B }, { id: C }, "
-        "{ id: c0 } ] } } }"
+        "{ op: call, args: [ { id: S }, { id: c0 } ] } } }"
     )
 
     ast = parse_isl_ast(ast_str)
-    a = Tensor("A", (10,))
-    b = Tensor("B", (10,))
-    c = Tensor("C", (10,))
-    domain = Domain((Axis("i", 10),))
+    a = Tensor("A", (IntConst(10),))
+    b = Tensor("B", (IntConst(10),))
+    c = Tensor("C", (IntConst(10),))
+    domain = Domain(
+        params=(),
+        iterators=(Iterator("i"),),
+        constraints=(
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("i")),
+            Compare(lhs=Var("i"), op="LT", rhs=IntConst(10)),
+        ),
+    )
     schedule = Schedule(("i",))
     compute = Compute(
         name="S",
         domain=domain,
-        stmt=Store(
-            target=c,
-            index=("i",),
+        body=Store(
+            access=Access(tensor=c, index=(Var("i"),)),
             value=BinaryOp(
-                op="add",
-                left=Load(tensor=a, index=("i",)),
-                right=Load(tensor=b, index=("i",)),
+                op="Add",
+                lhs=Load(access=Access(tensor=a, index=(Var("i"),))),
+                rhs=Load(access=Access(tensor=b, index=(Var("i"),))),
             ),
         ),
     )
     func = PrimFunc(
         name="kernel",
-        compute=compute,
+        computes=(compute,),
         schedule=schedule,
         params=(a, b, c),
     )

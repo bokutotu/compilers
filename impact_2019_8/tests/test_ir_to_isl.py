@@ -4,59 +4,84 @@ import islpy as isl
 
 from ir_to_isl import (
     build_domain,
-    build_domain_and_schedule,
     build_read_access,
     build_schedule,
     build_write_access,
+    constraint_to_isl,
+    expr_to_isl,
 )
 from ir_types import (
-    AffineConstraint,
-    AffineExpr,
-    AffineTerm,
-    Axis,
+    Access,
     BinaryOp,
+    Compare,
     Compute,
     Domain,
+    IntConst,
+    Iterator,
     Load,
     PrimFunc,
     Schedule,
     Store,
     Tensor,
+    Var,
 )
 
 
 def _make_func(
-    axes: tuple[Axis, ...],
-    constraints: tuple[AffineConstraint, ...] = (),
+    iterators: tuple[Iterator, ...],
+    params: tuple[str, ...],
+    constraints: tuple[Compare, ...] = (),
 ) -> PrimFunc:
-    a = Tensor(name="A", shape=tuple(ax.extent for ax in axes))
-    b = Tensor(name="B", shape=tuple(ax.extent for ax in axes))
-    out = Tensor(name="C", shape=tuple(ax.extent for ax in axes))
-    axis_names = tuple(ax.name for ax in axes)
+    """テスト用のPrimFuncを生成する."""
+    # 各イテレータの範囲に応じた形状を生成
+    if params:
+        shape = tuple(Var(p) for p in params)
+    else:
+        shape = tuple(IntConst(4) for _ in iterators)
+
+    a = Tensor(name="A", shape=shape)
+    b = Tensor(name="B", shape=shape)
+    out = Tensor(name="C", shape=shape)
+
+    # インデックスはイテレータ名の変数
+    index = tuple(Var(it.name) for it in iterators)
+
     return PrimFunc(
         name="kernel",
-        compute=Compute(
-            name="S",
-            domain=Domain(axes, constraints),
-            stmt=Store(
-                target=out,
-                index=axis_names,
-                value=BinaryOp(
-                    op="add",
-                    left=Load(tensor=a, index=axis_names),
-                    right=Load(tensor=b, index=axis_names),
+        params=(a, b, out),
+        computes=(
+            Compute(
+                name="S",
+                domain=Domain(
+                    params=params,
+                    iterators=iterators,
+                    constraints=constraints,
+                ),
+                body=Store(
+                    access=Access(tensor=out, index=index),
+                    value=BinaryOp(
+                        op="Add",
+                        lhs=Load(access=Access(tensor=a, index=index)),
+                        rhs=Load(access=Access(tensor=b, index=index)),
+                    ),
                 ),
             ),
         ),
-        schedule=Schedule(loop_order=axis_names),
-        params=(a, b, out),
+        schedule=Schedule(loop_order=tuple(it.name for it in iterators)),
     )
 
 
 def test_build_domain_literal_extents():
     """数値の範囲からドメインを生成する."""
     ctx = isl.Context()
-    func = _make_func((Axis(name="i", extent=4, lower=0),))
+    func = _make_func(
+        iterators=(Iterator(name="i"),),
+        params=(),
+        constraints=(
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("i")),
+            Compare(lhs=Var("i"), op="LT", rhs=IntConst(4)),
+        ),
+    )
     domain = build_domain(func, ctx)
 
     expected = isl.UnionSet("{ S[i] : 0 <= i < 4 }", ctx)
@@ -66,7 +91,14 @@ def test_build_domain_literal_extents():
 def test_build_schedule_literal_extents():
     """数値の範囲からスケジュールを生成する."""
     ctx = isl.Context()
-    func = _make_func((Axis(name="i", extent=4, lower=0),))
+    func = _make_func(
+        iterators=(Iterator(name="i"),),
+        params=(),
+        constraints=(
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("i")),
+            Compare(lhs=Var("i"), op="LT", rhs=IntConst(4)),
+        ),
+    )
     schedule = build_schedule(func, ctx)
 
     expected = isl.UnionMap("{ S[i] -> [i] : 0 <= i < 4 }", ctx)
@@ -76,8 +108,16 @@ def test_build_schedule_literal_extents():
 def test_build_domain_and_schedule_symbolic_extents():
     """記号パラメータでドメインとスケジュールを生成する."""
     ctx = isl.Context()
-    func = _make_func((Axis(name="i", extent="N", lower=0),))
-    domain, schedule = build_domain_and_schedule(func, ctx)
+    func = _make_func(
+        iterators=(Iterator(name="i"),),
+        params=("N",),
+        constraints=(
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("i")),
+            Compare(lhs=Var("i"), op="LT", rhs=Var("N")),
+        ),
+    )
+    domain = build_domain(func, ctx)
+    schedule = build_schedule(func, ctx)
 
     expected_domain = isl.UnionSet("[N] -> { S[i] : 0 <= i < N }", ctx)
     expected_schedule = isl.UnionMap("[N] -> { S[i] -> [i] : 0 <= i < N }", ctx)
@@ -85,47 +125,54 @@ def test_build_domain_and_schedule_symbolic_extents():
     assert schedule.is_equal(expected_schedule)
 
 
-def test_build_domain_with_affine_constraint_triangular():
+def test_build_domain_with_constraint_triangular():
     """三角行列のドメイン: 0 <= j <= i を生成する."""
     ctx = isl.Context()
 
-    # j <= i という制約を追加
-    constraint = AffineConstraint(
-        lhs=AffineExpr.from_var("j"),
-        op="LE",
-        rhs=AffineExpr.from_var("i"),
-    )
-
     func = _make_func(
-        axes=(
-            Axis(name="i", extent="N", lower=0),
-            Axis(name="j", extent="N", lower=0),
+        iterators=(
+            Iterator(name="i"),
+            Iterator(name="j"),
         ),
-        constraints=(constraint,),
+        params=("N",),
+        constraints=(
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("i")),
+            Compare(lhs=Var("i"), op="LT", rhs=Var("N")),
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("j")),
+            Compare(lhs=Var("j"), op="LT", rhs=Var("N")),
+            Compare(lhs=Var("j"), op="LE", rhs=Var("i")),  # j <= i
+        ),
     )
     domain = build_domain(func, ctx)
 
-    expected = isl.UnionSet("[N] -> { S[i, j] : 0 <= i < N and 0 <= j < N and j <= i }", ctx)
+    expected = isl.UnionSet(
+        "[N] -> { S[i, j] : 0 <= i < N and 0 <= j < N and j <= i }", ctx
+    )
     assert domain.is_equal(expected)
 
 
-def test_build_domain_with_affine_constraint_sum():
+def test_build_domain_with_constraint_sum():
     """i + j < N の制約を生成する."""
     ctx = isl.Context()
 
-    # i + j < N という制約
-    constraint = AffineConstraint(
-        lhs=AffineExpr.from_var("i") + "j",
-        op="LT",
-        rhs=AffineExpr.from_var("N"),
-    )
-
     func = _make_func(
-        axes=(
-            Axis(name="i", extent="N", lower=0),
-            Axis(name="j", extent="N", lower=0),
+        iterators=(
+            Iterator(name="i"),
+            Iterator(name="j"),
         ),
-        constraints=(constraint,),
+        params=("N",),
+        constraints=(
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("i")),
+            Compare(lhs=Var("i"), op="LT", rhs=Var("N")),
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("j")),
+            Compare(lhs=Var("j"), op="LT", rhs=Var("N")),
+            # i + j < N
+            Compare(
+                lhs=BinaryOp(op="Add", lhs=Var("i"), rhs=Var("j")),
+                op="LT",
+                rhs=Var("N"),
+            ),
+        ),
     )
     domain = build_domain(func, ctx)
 
@@ -135,68 +182,69 @@ def test_build_domain_with_affine_constraint_sum():
     assert domain.is_equal(expected)
 
 
-def test_affine_expr_to_isl():
-    """AffineExprのISL変換テスト."""
+def test_expr_to_isl():
+    """Exprのexpr_to_isl変換テスト."""
     # 単純な変数
-    expr = AffineExpr.from_var("i")
-    assert expr.to_isl() == "i"
+    assert expr_to_isl(Var("i")) == "i"
 
     # 定数
-    expr = AffineExpr.from_const(5)
-    assert expr.to_isl() == "5"
-
-    # 係数付き変数
-    expr = AffineExpr.from_var("i", coeff=2)
-    assert expr.to_isl() == "2*i"
+    assert expr_to_isl(IntConst(5)) == "5"
 
     # 足し算: i + j
-    expr = AffineExpr.from_var("i") + "j"
-    assert expr.to_isl() == "i + j"
+    expr = BinaryOp(op="Add", lhs=Var("i"), rhs=Var("j"))
+    assert expr_to_isl(expr) == "(i + j)"
 
     # 引き算: i - j
-    expr = AffineExpr.from_var("i") - "j"
-    assert expr.to_isl() == "i - j"
+    expr = BinaryOp(op="Sub", lhs=Var("i"), rhs=Var("j"))
+    assert expr_to_isl(expr) == "(i - j)"
 
-    # 複雑な式: 2*i + 3*j - 1
-    expr = AffineExpr.from_var("i", coeff=2) + AffineExpr.from_var("j", coeff=3) - 1
-    assert expr.to_isl() == "2*i + 3*j - 1"
-
-
-def test_affine_constraint_to_isl():
-    """AffineConstraintのISL変換テスト."""
-    # j <= i
-    constraint = AffineConstraint(
-        lhs=AffineExpr.from_var("j"),
-        op="LE",
-        rhs=AffineExpr.from_var("i"),
+    # 複雑な式: 2*i + j
+    expr = BinaryOp(
+        op="Add",
+        lhs=BinaryOp(op="Mul", lhs=IntConst(2), rhs=Var("i")),
+        rhs=Var("j"),
     )
-    assert constraint.to_isl() == "j <= i"
+    assert expr_to_isl(expr) == "((2 * i) + j)"
+
+
+def test_constraint_to_isl():
+    """Constraintのconstraint_to_isl変換テスト."""
+    # j <= i
+    constraint = Compare(lhs=Var("j"), op="LE", rhs=Var("i"))
+    assert constraint_to_isl(constraint) == "j <= i"
 
     # i + j < N
-    constraint = AffineConstraint(
-        lhs=AffineExpr.from_var("i") + "j",
+    constraint = Compare(
+        lhs=BinaryOp(op="Add", lhs=Var("i"), rhs=Var("j")),
         op="LT",
-        rhs=AffineExpr.from_var("N"),
+        rhs=Var("N"),
     )
-    assert constraint.to_isl() == "i + j < N"
+    assert constraint_to_isl(constraint) == "(i + j) < N"
 
     # 2*i >= j
-    constraint = AffineConstraint(
-        lhs=AffineExpr.from_var("i", coeff=2),
+    constraint = Compare(
+        lhs=BinaryOp(op="Mul", lhs=IntConst(2), rhs=Var("i")),
         op="GE",
-        rhs=AffineExpr.from_var("j"),
+        rhs=Var("j"),
     )
-    assert constraint.to_isl() == "2*i >= j"
+    assert constraint_to_isl(constraint) == "(2 * i) >= j"
 
 
 def test_build_write_access():
     """Write accessのテスト: C[i, j] への書き込み."""
     ctx = isl.Context()
     func = _make_func(
-        (
-            Axis(name="i", extent="N", lower=0),
-            Axis(name="j", extent="M", lower=0),
-        )
+        iterators=(
+            Iterator(name="i"),
+            Iterator(name="j"),
+        ),
+        params=("N", "M"),
+        constraints=(
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("i")),
+            Compare(lhs=Var("i"), op="LT", rhs=Var("N")),
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("j")),
+            Compare(lhs=Var("j"), op="LT", rhs=Var("M")),
+        ),
     )
     write_access = build_write_access(func, ctx)
 
@@ -210,10 +258,17 @@ def test_build_read_access():
     """Read accessのテスト: A[i, j] と B[i, j] からの読み込み."""
     ctx = isl.Context()
     func = _make_func(
-        (
-            Axis(name="i", extent="N", lower=0),
-            Axis(name="j", extent="M", lower=0),
-        )
+        iterators=(
+            Iterator(name="i"),
+            Iterator(name="j"),
+        ),
+        params=("N", "M"),
+        constraints=(
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("i")),
+            Compare(lhs=Var("i"), op="LT", rhs=Var("N")),
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("j")),
+            Compare(lhs=Var("j"), op="LT", rhs=Var("M")),
+        ),
     )
     read_access = build_read_access(func, ctx)
 

@@ -2,16 +2,19 @@
 
 from codegen import isl_ast_to_c
 from ir_types import (
-    Axis,
+    Access,
     BinaryOp,
+    Compare,
     Compute,
-    Const,
     Domain,
+    IntConst,
+    Iterator,
     Load,
     PrimFunc,
     ReduceStore,
     Schedule,
     Tensor,
+    Var,
 )
 from isl_ast_parser import parse_isl_ast
 
@@ -22,43 +25,51 @@ def test_codegen_gemm_like_reduction() -> None:
         "[ { id: c0 }, { val: 1 } ] }, inc: { val: 1 }, body: { iterator: "
         "{ id: c1 }, init: { val: 0 }, cond: { op: le, args: [ { id: c1 }, "
         "{ val: 2 } ] }, inc: { val: 1 }, body: { iterator: { id: c2 }, init: "
-        "{ val: 0 }, cond: { op: le, args: [ { id: c2 }, { val: 3 } ] }, inc: "
-        "{ val: 1 }, body: { user: { op: call, args: [ { id: S }, { id: c0 }, "
+        "{ val: 0 }, cond: { op: le, args: [ { id: c2 }, { val: 3 } ] }, "
+        "inc: { val: 1 }, body: { user: { op: call, args: [ { id: S }, { id: c0 }, "
         "{ id: c1 }, { id: c2 } ] } } } } } }"
     )
 
     ast = parse_isl_ast(ast_str)
 
     m, n, k = 2, 3, 4
-    a = Tensor("A", (m, k))
-    b = Tensor("B", (k, n))
-    c = Tensor("C", (m, n))
+    a = Tensor("A", (IntConst(m), IntConst(k)))
+    b = Tensor("B", (IntConst(k), IntConst(n)))
+    c = Tensor("C", (IntConst(m), IntConst(n)))
 
     compute = Compute(
         name="S",
         domain=Domain(
-            (
-                Axis("i", m),
-                Axis("j", n),
-                Axis("k", k, kind="reduce"),
-            )
-        ),
-        stmt=ReduceStore(
-            op="add",
-            target=c,
-            index=("i", "j"),
-            value=BinaryOp(
-                op="mul",
-                left=Load(a, ("i", "k")),
-                right=Load(b, ("k", "j")),
+            params=(),
+            iterators=(
+                Iterator("i"),
+                Iterator("j"),
+                Iterator("k", kind="reduce"),
             ),
-            init=Const(0),
+            constraints=(
+                Compare(lhs=IntConst(0), op="LE", rhs=Var("i")),
+                Compare(lhs=Var("i"), op="LT", rhs=IntConst(m)),
+                Compare(lhs=IntConst(0), op="LE", rhs=Var("j")),
+                Compare(lhs=Var("j"), op="LT", rhs=IntConst(n)),
+                Compare(lhs=IntConst(0), op="LE", rhs=Var("k")),
+                Compare(lhs=Var("k"), op="LT", rhs=IntConst(k)),
+            ),
+        ),
+        body=ReduceStore(
+            op="Sum",
+            access=Access(tensor=c, index=(Var("i"), Var("j"))),
+            value=BinaryOp(
+                op="Mul",
+                lhs=Load(access=Access(tensor=a, index=(Var("i"), Var("k")))),
+                rhs=Load(access=Access(tensor=b, index=(Var("k"), Var("j")))),
+            ),
+            init=IntConst(0),
         ),
     )
 
     func = PrimFunc(
         name="gemm",
-        compute=compute,
+        computes=(compute,),
         schedule=Schedule(("i", "j", "k")),
         params=(a, b, c),
     )

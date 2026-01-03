@@ -1,212 +1,186 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAlias, Union
 
-Extent: TypeAlias = int | str
-Shape: TypeAlias = tuple[Extent, ...]
-Index: TypeAlias = tuple[str, ...]
+# 算術・準アフィン演算
+# ISLで重要な floor, mod, min, max を含める
+BinOpKind: TypeAlias = Literal[
+    "Add", "Sub", "Mul", "Div",      # +, -, *, /
+    "FloorDiv", "Mod",               # //, %  (ISL: floor(x/y), x%y)
+    "Max", "Min"                     # max, min
+]
+
+UnaryOpKind: TypeAlias = Literal["Neg", "Not"]
+
+# 比較演算
+CompareOpKind: TypeAlias = Literal["LT", "LE", "GT", "GE", "EQ", "NE"]
+
+# 論理演算（制約の結合用）
+LogicOpKind: TypeAlias = Literal["And", "Or"]
 
 AxisKind: TypeAlias = Literal["spatial", "reduce"]
-ConstraintOp: TypeAlias = Literal["LE", "LT", "GE", "GT", "EQ", "NE"]
-
-# 演算子からISL文字列へのマッピング
-CONSTRAINT_OP_TO_ISL: dict[ConstraintOp, str] = {
-    "LE": "<=",
-    "LT": "<",
-    "GE": ">=",
-    "GT": ">",
-    "EQ": "=",
-    "NE": "!=",
-}
+ReduceOpKind: TypeAlias = Literal["Sum", "Prod", "Max", "Min"]
 
 
 @dataclass(frozen=True)
-class AffineTerm:
-    """アフィン項: coeff * var (varが空文字列の場合は定数項)"""
+class Expr:
+    """式の基底クラス"""
+    pass
 
-    coeff: int
-    var: str = ""  # 変数名。空の場合は定数項として扱う
+@dataclass(frozen=True)
+class IntConst(Expr):
+    """整数定数"""
+    value: int
 
-    def __neg__(self) -> AffineTerm:
-        return AffineTerm(-self.coeff, self.var)
+@dataclass(frozen=True)
+class FloatConst(Expr):
+    """浮動小数点定数 (計算本体のRHS等で使用)"""
+    value: float
 
-    def to_isl(self) -> str:
-        if not self.var:
-            return str(self.coeff)
-        if self.coeff == 1:
-            return self.var
-        if self.coeff == -1:
-            return f"-{self.var}"
-        return f"{self.coeff}*{self.var}"
+@dataclass(frozen=True)
+class Var(Expr):
+    """変数参照 (イテレータ変数 または パラメータ)"""
+    name: str
+
+@dataclass(frozen=True)
+class BinaryOp(Expr):
+    """二項演算: lhs op rhs
+    例: i + 1, i % 2, min(N, M)
+    """
+    op: BinOpKind
+    lhs: Expr
+    rhs: Expr
+
+@dataclass(frozen=True)
+class UnaryOp(Expr):
+    """単項演算: op operand"""
+    op: UnaryOpKind
+    operand: Expr
+
+@dataclass(frozen=True)
+class Call(Expr):
+    """関数呼び出し
+    ISLの特殊関数 (floor, ceil) や外部関数呼び出し用
+    """
+    name: str
+    args: tuple[Expr, ...]
 
 
 @dataclass(frozen=True)
-class AffineExpr:
-    """アフィン式: Σ(coeff * var) の形式"""
+class Constraint:
+    """制約の基底クラス"""
+    pass
 
-    terms: tuple[AffineTerm, ...]
+@dataclass(frozen=True)
+class Compare(Constraint):
+    """比較制約: lhs op rhs
+    例: i < N
+    """
+    lhs: Expr
+    op: CompareOpKind
+    rhs: Expr
 
-    def to_isl(self) -> str:
-        if not self.terms:
-            return "0"
-        parts: list[str] = []
-        for i, term in enumerate(self.terms):
-            s = term.to_isl()
-            if i == 0:
-                parts.append(s)
-            elif s.startswith("-"):
-                parts.append(f" - {s[1:]}")
-            else:
-                parts.append(f" + {s}")
-        return "".join(parts)
-
-    @staticmethod
-    def from_var(var: str, coeff: int = 1) -> AffineExpr:
-        """変数からアフィン式を作成"""
-        return AffineExpr((AffineTerm(coeff, var),))
-
-    @staticmethod
-    def from_const(value: int) -> AffineExpr:
-        """定数からアフィン式を作成"""
-        return AffineExpr((AffineTerm(value, ""),))
-
-    def __add__(self, other: AffineExpr | int | str) -> AffineExpr:
-        if isinstance(other, int):
-            other = AffineExpr.from_const(other)
-        elif isinstance(other, str):
-            other = AffineExpr.from_var(other)
-        return AffineExpr(self.terms + other.terms)
-
-    def __radd__(self, other: int | str) -> AffineExpr:
-        if isinstance(other, int):
-            return AffineExpr.from_const(other) + self
-        return AffineExpr.from_var(other) + self
-
-    def __sub__(self, other: AffineExpr | int | str) -> AffineExpr:
-        if isinstance(other, int):
-            other = AffineExpr.from_const(other)
-        elif isinstance(other, str):
-            other = AffineExpr.from_var(other)
-        neg_terms = tuple(-t for t in other.terms)
-        return AffineExpr(self.terms + neg_terms)
-
-    def __rsub__(self, other: int | str) -> AffineExpr:
-        if isinstance(other, int):
-            return AffineExpr.from_const(other) - self
-        return AffineExpr.from_var(other) - self
-
-    def __neg__(self) -> AffineExpr:
-        return AffineExpr(tuple(-t for t in self.terms))
-
-    def __mul__(self, coeff: int) -> AffineExpr:
-        return AffineExpr(tuple(AffineTerm(t.coeff * coeff, t.var) for t in self.terms))
-
-    def __rmul__(self, coeff: int) -> AffineExpr:
-        return self * coeff
+@dataclass(frozen=True)
+class Logical(Constraint):
+    """論理結合: lhs op rhs
+    例: (0 <= i) and (i < N)
+    """
+    op: LogicOpKind
+    lhs: Constraint
+    rhs: Constraint
 
 
 @dataclass(frozen=True)
-class AffineConstraint:
-    """アフィン制約: lhs op rhs (例: i + j <= N)"""
+class Iterator:
+    """ループ変数の定義"""
+    name: str
+    kind: AxisKind = "spatial"
 
-    lhs: AffineExpr
-    op: ConstraintOp
-    rhs: AffineExpr
+@dataclass(frozen=True)
+class Domain:
+    """
+    反復空間定義
+    """
+    # シンボリックパラメータ (例: N, M, K)
+    params: tuple[str, ...]
+    
+    # イテレータ変数 (例: i, j)
+    # ここで定義された順序がSetの次元順序になります
+    iterators: tuple[Iterator, ...]
+    
+    # 制約条件のリスト
+    # 複数の制約は暗黙的に AND で結合されますが、
+    # Logicalクラスを使って複雑な条件(ORなど)も記述可能です
+    constraints: tuple[Constraint, ...]
 
-    def to_isl(self) -> str:
-        op_str = CONSTRAINT_OP_TO_ISL[self.op]
-        return f"{self.lhs.to_isl()} {op_str} {self.rhs.to_isl()}"
 
-    def collect_params(self) -> list[str]:
-        """シンボリックパラメータを収集（大文字の変数はパラメータとして扱う）"""
-        params: list[str] = []
-        for term in self.lhs.terms + self.rhs.terms:
-            if term.var and term.var.isupper() and term.var not in params:
-                params.append(term.var)
-        return params
+# ==========================================
+# 5. テンソルとアクセス (Access)
+# ==========================================
 
-BinOpKind: TypeAlias = Literal["add", "sub", "mul", "div"]
-ReduceOpKind: TypeAlias = Literal["add", "mul", "max", "min"]
-
-OpKind: TypeAlias = BinOpKind
-
+# 形状やインデックスも「式」で表現する
+# これにより A[i + 1, 2 * j] のようなアクセスが可能になる
+Shape: TypeAlias = tuple[Expr, ...]
+Index: TypeAlias = tuple[Expr, ...]
 
 @dataclass(frozen=True)
 class Tensor:
     name: str
     shape: Shape
-
-
-@dataclass(frozen=True)
-class Axis:
-    name: str
-    extent: Extent
-    lower: int | str = 0
-    kind: AxisKind = "spatial"
-
+    dtype: str = "float32"
 
 @dataclass(frozen=True)
-class Domain:
-    axis: tuple[Axis, ...]
-    constraints: tuple[AffineConstraint, ...] = ()  # 追加のアフィン制約
-
-
-@dataclass(frozen=True)
-class Schedule:
-    loop_order: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class Const:
-    value: int
-
-
-@dataclass(frozen=True)
-class Load:
+class Access:
+    """テンソルアクセス共通構造"""
     tensor: Tensor
     index: Index
 
 
+Stmt: TypeAlias = Union["Store", "ReduceStore", "Block"]
+
+
 @dataclass(frozen=True)
-class BinaryOp:
-    op: BinOpKind
-    left: Expr
-    right: Expr
-
-
-Expr: TypeAlias = Const | Load | BinaryOp
-
+class Load(Expr):
+    """ロード式 (式の一部として埋め込まれる)"""
+    access: Access
 
 @dataclass(frozen=True)
 class Store:
-    target: Tensor
-    index: Index
+    """ストア文"""
+    access: Access
     value: Expr
-
+    # 条件付き実行 (if文)
+    predicate: Constraint | None = None
 
 @dataclass(frozen=True)
 class ReduceStore:
+    """リダクション文: A[i] += value"""
     op: ReduceOpKind
-    target: Tensor
-    index: Index
+    access: Access
     value: Expr
     init: Expr | None = None
 
-
-Stmt: TypeAlias = Store | ReduceStore
+@dataclass(frozen=True)
+class Block:
+    """文のブロック"""
+    stmts: tuple[Stmt, ...]
 
 
 @dataclass(frozen=True)
 class Compute:
     name: str
     domain: Domain
-    stmt: Stmt
+    body: Stmt
 
+@dataclass(frozen=True)
+class Schedule:
+    """スケジューリング情報"""
+    loop_order: tuple[str, ...]
 
 @dataclass(frozen=True)
 class PrimFunc:
     name: str
-    compute: Compute
+    params: tuple[Tensor, ...]    # 入出力引数
+    computes: tuple[Compute, ...] # 計算ステージ
     schedule: Schedule
-    params: tuple[Tensor, ...]

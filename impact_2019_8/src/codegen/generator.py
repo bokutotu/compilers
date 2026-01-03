@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from ast_types import Body, ForLoop, User
-from ir_types import PrimFunc
+from ast_types import Body, Call, ForLoop, Id, User
+from ir_types import Compute, PrimFunc
 
 from .expr import generate_cond
 from .ops import generate_user_stmt
@@ -15,6 +15,10 @@ class CCodeGenerator:
     def __init__(self, func: PrimFunc) -> None:
         self._func = func
         self._indent_level = 0
+        # Compute名からComputeへのマッピングを作成
+        self._computes: dict[str, Compute] = {
+            c.name: c for c in func.computes
+        }
 
     def generate(self, ast: ForLoop) -> str:
         """ForLoopからC言語コードを生成する."""
@@ -61,7 +65,18 @@ class CCodeGenerator:
         """bodyを生成する."""
         if isinstance(body, User):
             indent = self._indent()
-            stmt = generate_user_stmt(body.expr, self._func.compute)
+            # Call argsの最初の要素がCompute名
+            call = body.expr
+            if not isinstance(call, Call) or not call.args:
+                raise ValueError("User body must contain a Call with args")
+            first_arg = call.args[0]
+            if not isinstance(first_arg, Id):
+                raise ValueError("First arg of Call must be an Id (compute name)")
+            compute_name = first_arg.name
+            compute = self._computes.get(compute_name)
+            if compute is None:
+                raise ValueError(f"Unknown compute: {compute_name}")
+            stmt = generate_user_stmt(call, compute)
             if not stmt:
                 return ""
             lines = stmt.splitlines()
