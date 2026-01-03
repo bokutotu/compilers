@@ -2,7 +2,18 @@ from __future__ import annotations
 
 import islpy as isl
 
-from ir_types import AffineConstraint, Axis, Domain, PrimFunc
+from ir_types import (
+    AffineConstraint,
+    Axis,
+    BinaryOp,
+    Domain,
+    Expr,
+    Load,
+    PrimFunc,
+    ReduceStore,
+    Store,
+    Tensor,
+)
 
 
 def _axis_dims(a: Axis) -> str:
@@ -93,3 +104,90 @@ def build_domain_and_schedule(
     domain = build_domain(func, ctx)
     schedule = build_schedule(func, ctx)
     return domain, schedule
+
+
+def _collect_loads(expr: Expr) -> list[Load]:
+    """式からすべてのLoadを再帰的に収集"""
+    if isinstance(expr, Load):
+        return [expr]
+    if isinstance(expr, BinaryOp):
+        return _collect_loads(expr.left) + _collect_loads(expr.right)
+    return []
+
+
+def _build_access_map_str(
+    stmt_name: str,
+    index_names: str,
+    tensor: Tensor,
+    access_index: tuple[str, ...],
+    param_str: str,
+    constraints: str,
+) -> str:
+    """アクセスマップのISL文字列を生成"""
+    access_str = ", ".join(access_index)
+    return (
+        f"{param_str}{{ {stmt_name}[{index_names}] -> "
+        f"{tensor.name}[{access_str}] : {constraints} }}"
+    )
+
+
+def build_write_access(func: PrimFunc, ctx: isl.Context | None = None) -> isl.UnionMap:
+    """Write accessのUnionMapを構築
+
+    Returns:
+        isl.UnionMap: { S[i, j, ...] -> Tensor[idx1, idx2, ...] }
+    """
+    ctx = ctx or isl.Context()
+    stmt_name = func.compute.name
+    domain = func.compute.domain
+    stmt = func.compute.stmt
+    params = _collect_params(domain)
+    param_str = _make_param_str(params)
+    index_names = ", ".join([a.name for a in domain.axis])
+    constraints = _build_constraints_str(domain)
+
+    if isinstance(stmt, (Store, ReduceStore)):
+        target = stmt.target
+        access_index = stmt.index
+        map_str = _build_access_map_str(
+            stmt_name, index_names, target, access_index, param_str, constraints
+        )
+        return isl.UnionMap(map_str, ctx)
+
+    # 空のUnionMapを返す
+    return isl.UnionMap(f"{param_str}{{ }}", ctx)
+
+
+def build_read_access(func: PrimFunc, ctx: isl.Context | None = None) -> isl.UnionMap:
+    """Read accessのUnionMapを構築
+
+    Returns:
+        isl.UnionMap: { S[i, j, ...] -> Tensor[idx1, idx2, ...] }
+        複数のテンソルを読む場合はunionされる
+    """
+    ctx = ctx or isl.Context()
+    stmt_name = func.compute.name
+    domain = func.compute.domain
+    stmt = func.compute.stmt
+    params = _collect_params(domain)
+    param_str = _make_param_str(params)
+    index_names = ", ".join([a.name for a in domain.axis])
+    constraints = _build_constraints_str(domain)
+
+    result: isl.UnionMap | None = None
+
+    # stmtのvalueから読み込みを収集
+    if isinstance(stmt, (Store, ReduceStore)):
+        loads = _collect_loads(stmt.value)
+        for load in loads:
+            map_str = _build_access_map_str(
+                stmt_name, index_names, load.tensor, load.index, param_str, constraints
+            )
+            access_map = isl.UnionMap(map_str, ctx)
+            result = access_map if result is None else result.union(access_map)
+
+    if result is None:
+        # 空のUnionMapを返す（読み込みがない場合）
+        return isl.UnionMap(f"{param_str}{{ }}", ctx)
+
+    return result

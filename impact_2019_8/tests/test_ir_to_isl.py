@@ -2,7 +2,13 @@
 
 import islpy as isl
 
-from ir_to_isl import build_domain, build_domain_and_schedule, build_schedule
+from ir_to_isl import (
+    build_domain,
+    build_domain_and_schedule,
+    build_read_access,
+    build_schedule,
+    build_write_access,
+)
 from ir_types import (
     AffineConstraint,
     AffineExpr,
@@ -181,3 +187,41 @@ def test_affine_constraint_to_isl():
         rhs=AffineExpr.from_var("j"),
     )
     assert constraint.to_isl() == "2*i >= j"
+
+
+def test_build_write_access():
+    """Write accessのテスト: C[i, j] への書き込み."""
+    ctx = isl.Context()
+    func = _make_func(
+        (
+            Axis(name="i", extent="N", lower=0),
+            Axis(name="j", extent="M", lower=0),
+        )
+    )
+    write_access = build_write_access(func, ctx)
+
+    expected = isl.UnionMap(
+        "[N, M] -> { S[i, j] -> C[i, j] : 0 <= i < N and 0 <= j < M }", ctx
+    )
+    assert write_access.is_equal(expected)
+
+
+def test_build_read_access():
+    """Read accessのテスト: A[i, j] と B[i, j] からの読み込み."""
+    ctx = isl.Context()
+    func = _make_func(
+        (
+            Axis(name="i", extent="N", lower=0),
+            Axis(name="j", extent="M", lower=0),
+        )
+    )
+    read_access = build_read_access(func, ctx)
+
+    expected_a = isl.UnionMap(
+        "[N, M] -> { S[i, j] -> A[i, j] : 0 <= i < N and 0 <= j < M }", ctx
+    )
+    expected_b = isl.UnionMap(
+        "[N, M] -> { S[i, j] -> B[i, j] : 0 <= i < N and 0 <= j < M }", ctx
+    )
+    expected = expected_a.union(expected_b)
+    assert read_access.is_equal(expected)
