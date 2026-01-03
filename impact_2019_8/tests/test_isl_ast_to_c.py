@@ -1,5 +1,7 @@
 """isl_ast_to_cモジュールのテスト."""
 
+import islpy as isl
+
 from codegen import isl_ast_to_c
 from ir_types import (
     Access,
@@ -16,18 +18,20 @@ from ir_types import (
     Tensor,
     Var,
 )
-from isl_ast_parser import parse_isl_ast
+from isl_ast_converter import convert_ast_node
 
 
 def test_isl_ast_to_c():
     """ISL AST文字列からC言語コードが生成されることをテストする."""
-    ast_str = (
-        "{ iterator: { id: c0 }, init: { val: 0 }, cond: { op: le, args: "
-        "[ { id: c0 }, { val: 9 } ] }, inc: { val: 1 }, body: { user: "
-        "{ op: call, args: [ { id: S }, { id: c0 } ] } } }"
-    )
+    # ISL で AST を生成
+    ctx = isl.Context()
+    domain = isl.UnionSet("{ S[i] : 0 <= i <= 9 }")
+    schedule = isl.UnionMap("{ S[i] -> [i] }")
+    schedule = schedule.intersect_domain(domain)
+    build = isl.AstBuild.alloc(ctx)
+    isl_ast = build.node_from_schedule_map(schedule)
 
-    ast = parse_isl_ast(ast_str)
+    ast = convert_ast_node(isl_ast)
     a = Tensor("A", (IntConst(10),))
     b = Tensor("B", (IntConst(10),))
     c = Tensor("C", (IntConst(10),))

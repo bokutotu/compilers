@@ -1,5 +1,7 @@
 """reductionコード生成のテスト."""
 
+import islpy as isl
+
 from codegen import isl_ast_to_c
 from ir_types import (
     Access,
@@ -16,21 +18,20 @@ from ir_types import (
     Tensor,
     Var,
 )
-from isl_ast_parser import parse_isl_ast
+from isl_ast_converter import convert_ast_node
 
 
 def test_codegen_gemm_like_reduction() -> None:
-    ast_str = (
-        "{ iterator: { id: c0 }, init: { val: 0 }, cond: { op: le, args: "
-        "[ { id: c0 }, { val: 1 } ] }, inc: { val: 1 }, body: { iterator: "
-        "{ id: c1 }, init: { val: 0 }, cond: { op: le, args: [ { id: c1 }, "
-        "{ val: 2 } ] }, inc: { val: 1 }, body: { iterator: { id: c2 }, init: "
-        "{ val: 0 }, cond: { op: le, args: [ { id: c2 }, { val: 3 } ] }, "
-        "inc: { val: 1 }, body: { user: { op: call, args: [ { id: S }, { id: c0 }, "
-        "{ id: c1 }, { id: c2 } ] } } } } } }"
-    )
+    # ISL で AST を生成 (3重ネストループ: i=0..1, j=0..2, k=0..3)
+    ctx = isl.Context()
+    domain_str = "{ S[i, j, k] : 0 <= i <= 1 and 0 <= j <= 2 and 0 <= k <= 3 }"
+    domain = isl.UnionSet(domain_str)
+    schedule = isl.UnionMap("{ S[i, j, k] -> [i, j, k] }")
+    schedule = schedule.intersect_domain(domain)
+    build = isl.AstBuild.alloc(ctx)
+    isl_ast = build.node_from_schedule_map(schedule)
 
-    ast = parse_isl_ast(ast_str)
+    ast = convert_ast_node(isl_ast)
 
     m, n, k = 2, 3, 4
     a = Tensor("A", (IntConst(m), IntConst(k)))
