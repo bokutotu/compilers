@@ -18,7 +18,6 @@ from ir_types import (
     Var,
 )
 from optimization_types import Tile
-from optimize import apply_tiling
 
 
 def test_compile():
@@ -511,9 +510,7 @@ def test_compile_gemm_tiled():
         params=(a, b, c),
     )
 
-    tiled_schedule = apply_tiling(func, [Tile("i", 32), Tile("j", 64)])
-
-    c_code = compile(func, schedule=tiled_schedule)
+    c_code = compile(func, optimize=True, tiles=[Tile(0, 32), Tile(1, 64)])
 
     expected = """\
 void gemm_tiled(int *A, int *B, int *C) {
@@ -532,3 +529,60 @@ void gemm_tiled(int *A, int *B, int *C) {
 }"""
 
     assert c_code == expected
+
+
+def test_compile_skewed_tiled():
+    a = Tensor("A", (IntConst(8), IntConst(8)))
+
+    domain = Domain(
+        params=(),
+        iterators=(Iterator("i"), Iterator("j")),
+        constraints=(
+            Compare(lhs=IntConst(1), op="LE", rhs=Var("i")),
+            Compare(lhs=Var("i"), op="LT", rhs=IntConst(8)),
+            Compare(lhs=IntConst(0), op="LE", rhs=Var("j")),
+            Compare(lhs=Var("j"), op="LT", rhs=IntConst(7)),
+        ),
+    )
+
+    compute = Compute(
+        name="S",
+        domain=domain,
+        body=Store(
+            access=Access(tensor=a, index=(Var("i"), Var("j"))),
+            value=Load(
+                access=Access(
+                    tensor=a,
+                    index=(
+                        BinaryOp(op="Sub", lhs=Var("i"), rhs=IntConst(1)),
+                        BinaryOp(op="Add", lhs=Var("j"), rhs=IntConst(1)),
+                    ),
+                )
+            ),
+        ),
+    )
+
+    func = PrimFunc(
+        name="skewed",
+        params=(a,),
+        computes=(compute,),
+        schedule=Schedule(("i", "j")),
+    )
+
+    c_code = compile(func, optimize=True, tiles=[Tile(0, 2), Tile(1, 2)])
+
+    expected = """\
+void skewed(int *A) {
+    for (int c0 = 0; c0 <= 13; c0 += 2) {
+        for (int c1 = max(0, (c0 - 6)); c1 <= min(7, (c0 + 1)); c1 += 2) {
+            for (int c2 = max(0, ((-c0) + 1)); c2 <= 1; c2++) {
+                for (int c3 = max(max(0, ((-c1) + 1)), (((c0 - c1) + c2) - 6)); c3 <= min(1, ((c0 - c1) + c2)); c3++) {
+                    A[(((c1 + c3))*8 + ((((c0 - c1) + c2) - c3)))] = A[(((c1 + c3) - 1)*8 + ((((c0 - c1) + c2) - c3) + 1))];
+                }
+            }
+        }
+    }
+}"""
+
+    assert c_code == expected
+

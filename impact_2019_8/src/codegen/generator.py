@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from ast_types import Block, Body, Call, ForLoop, Guard, Id, User
+from ast_types import Block, Body, Call, ForLoop, Guard, Id, User, Val
 from ir_types import Compute, PrimFunc
 
-from .expr import generate_cond
+from .expr import generate_cond, generate_expr
 from .ops import generate_user_stmt
 
 AstInput = ForLoop | Block
@@ -47,17 +47,20 @@ class CCodeGenerator:
     def _generate_for_loop(self, loop: ForLoop) -> str:
         """ForLoopをC言語のforループに変換する."""
         iterator = loop.iterator.name
-        init_val = loop.init.value
+        init_str = generate_expr(loop.init)
         cond_str = generate_cond(loop.cond)
-        inc_val = loop.inc.value
+        inc_expr = loop.inc
 
         lines = []
         indent = self._indent()
 
-        inc_str = f"{iterator}++" if inc_val == 1 else f"{iterator} += {inc_val}"
+        if isinstance(inc_expr, Val) and inc_expr.value == 1:
+            inc_str = f"{iterator}++"
+        else:
+            inc_str = f"{iterator} += {generate_expr(inc_expr)}"
 
         lines.append(
-            f"{indent}for (int {iterator} = {init_val}; {cond_str}; {inc_str}) {{"
+            f"{indent}for (int {iterator} = {init_str}; {cond_str}; {inc_str}) {{"
         )
 
         self._indent_level += 1

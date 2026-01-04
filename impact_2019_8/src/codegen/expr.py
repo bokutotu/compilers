@@ -34,6 +34,10 @@ def generate_expr(expr: Expr) -> str:
     elif isinstance(expr, BinOp):
         left = generate_expr(expr.left)
         right = generate_expr(expr.right)
+        if expr.op == "max":
+            return f"max({left}, {right})"
+        elif expr.op == "min":
+            return f"min({left}, {right})"
         op = OP_MAP.get(expr.op, expr.op)
         return f"({left} {op} {right})"
     elif isinstance(expr, Call):

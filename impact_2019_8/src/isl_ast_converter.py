@@ -76,16 +76,12 @@ def _convert_for_loop(node: isl.AstNode) -> ForLoop:
         raise ValueError("iterator must be an Id")
 
     init_expr = _convert_expr(node.for_get_init())
-    if not isinstance(init_expr, Val):
-        raise ValueError("init must be a Val")
 
     cond_expr = _convert_expr(node.for_get_cond())
     if not isinstance(cond_expr, BinOp):
         raise ValueError("cond must be a BinOp")
 
     inc_expr = _convert_expr(node.for_get_inc())
-    if not isinstance(inc_expr, Val):
-        raise ValueError("inc must be a Val")
 
     body = _convert_body(node.for_get_body())
 
@@ -189,5 +185,12 @@ def _convert_op_expr(expr: isl.AstExpr) -> Expr:
     # 二項演算子
     if n_arg == 2:
         return BinOp(op=op_name, left=args[0], right=args[1])
+
+    # 多引数のmax/minはネストした二項演算に変換
+    if n_arg > 2 and op_name in ("max", "min"):
+        result = args[0]
+        for arg in args[1:]:
+            result = BinOp(op=op_name, left=result, right=arg)
+        return result
 
     raise ValueError(f"Unexpected number of args: {n_arg} for op {op_name}")

@@ -73,9 +73,9 @@ class ForLoop:
     """forループ."""
 
     iterator: Id
-    init: Val
+    init: Expr
     cond: BinOp
-    inc: Val
+    inc: Expr
     body: Body
 
 

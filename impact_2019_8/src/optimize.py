@@ -36,15 +36,15 @@ def check_tiling_legality(
     """
     ctx = ctx or isl.Context()
 
-    # スケジュールの軸順序を取得
-    loop_order = list(func.schedule.loop_order)
+    # スケジュールの軸数を取得
+    n_axes = len(func.schedule.loop_order)
 
-    # 軸名の検証を先に行う
+    # 軸インデックスの検証を先に行う
     tile_axes_indices = []
     for tile in tiles:
-        if tile.axis not in loop_order:
-            raise ValueError(f"Unknown axis: {tile.axis}. Available: {loop_order}")
-        tile_axes_indices.append(loop_order.index(tile.axis))
+        if tile.axis >= n_axes:
+            raise ValueError(f"Invalid axis index: {tile.axis}. Valid range: 0-{n_axes - 1}")
+        tile_axes_indices.append(tile.axis)
 
     # スケジュールとアクセスを構築
     domain = build_domain(func, ctx)
@@ -78,10 +78,8 @@ def check_tiling_legality(
 
     # 各タイル軸について、依存距離が非負かチェック
     for axis_idx in tile_axes_indices:
-        axis_name = loop_order[axis_idx]
-
         if not _check_axis_non_negative(deltas, axis_idx):
-            violations.append(f"Axis '{axis_name}' has negative dependence distance")
+            violations.append(f"Axis {axis_idx} has negative dependence distance")
 
     return len(violations) == 0, violations
 
@@ -189,21 +187,10 @@ def _apply_tile_to_band(
     Returns:
         タイル化されたバンドノード
     """
-    # スケジュールの軸順序を取得
-    loop_order = list(func.schedule.loop_order)
-
-    # 複数のComputeがある場合、末尾にstmt_idが追加されている
-    add_stmt_id = len(func.computes) >= 2
-    if add_stmt_id:
-        loop_order.append("__stmt_id__")
-
-    # タイル指定を軸名からサイズへのマップに変換
-    tile_map: dict[str, int] = {}
+    # タイル指定を軸インデックスからサイズへのマップに変換
+    tile_map: dict[int, int] = {}
     for tile in tiles:
-        if tile.axis in loop_order:
-            tile_map[tile.axis] = tile.tile_size
-        else:
-            raise ValueError(f"Unknown axis: {tile.axis}. Available: {loop_order}")
+        tile_map[tile.axis] = tile.tile_size
 
     # タイルサイズのMultiValを構築
     space = node.band_get_space()
@@ -211,10 +198,9 @@ def _apply_tile_to_band(
 
     tile_sizes = isl.MultiVal.zero(space)
     for i in range(n_dims):
-        axis_name = loop_order[i] if i < len(loop_order) else f"dim_{i}"
-        if axis_name in tile_map:
+        if i in tile_map:
             tile_sizes = tile_sizes.set_val(
-                i, isl.Val.int_from_si(ctx, tile_map[axis_name])
+                i, isl.Val.int_from_si(ctx, tile_map[i])
             )
         else:
             # タイル化しない軸はサイズ1
@@ -224,3 +210,61 @@ def _apply_tile_to_band(
     node = node.band_tile(tile_sizes)
 
     return node
+
+
+def compute_optimized_schedule(
+    func: PrimFunc,
+    ctx: isl.Context | None = None,
+) -> isl.Schedule:
+    """
+    依存関係を解析し、Skewing等を含む最適なスケジュールを自動計算する。
+    これにより、タイル化可能なPermutable Bandが生成される。
+    """
+    ctx = ctx or isl.Context()
+
+    domain = build_domain(func, ctx)
+    schedule_map = build_schedule(func, ctx).intersect_domain(domain)
+    read_access = build_read_access(func, ctx)
+    write_access = build_write_access(func, ctx)
+
+    raw_dep = compute_raw_dependence(schedule_map, write_access, read_access)
+    war_dep = compute_war_dependence(schedule_map, write_access, read_access)
+    waw_dep = compute_waw_dependence(schedule_map, write_access)
+
+    sc = isl.ScheduleConstraints.on_domain(domain)
+
+    all_deps = raw_dep.union(war_dep).union(waw_dep)
+    sc = sc.set_validity(all_deps)
+    sc = sc.set_coincidence(all_deps)
+    sc = sc.set_proximity(all_deps)
+
+    return sc.compute_schedule()
+
+
+def apply_tiling_to_schedule(
+    schedule: isl.Schedule,
+    tiles: list[Tile],
+) -> isl.Schedule:
+    """
+    最適化されたスケジュールにタイリングを適用する。
+    """
+    ctx = schedule.get_ctx()
+    root = schedule.get_root()
+    node = root.child(0)
+
+    if node.get_type() != isl.schedule_node_type.band:
+        return schedule
+
+    tile_map: dict[int, int] = {tile.axis: tile.tile_size for tile in tiles}
+
+    space = node.band_get_space()
+    n_dims = space.dim(isl.dim_type.set)
+
+    tile_sizes = isl.MultiVal.zero(space)
+    for i in range(n_dims):
+        size = tile_map.get(i, 1)
+        tile_sizes = tile_sizes.set_val(i, isl.Val.int_from_si(ctx, size))
+
+    node = node.band_tile(tile_sizes)
+
+    return node.get_schedule()
