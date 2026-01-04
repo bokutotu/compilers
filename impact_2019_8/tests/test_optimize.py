@@ -126,7 +126,9 @@ def test_apply_tiling_on_skewed_schedule():
     node = schedule_tree.get_root().child(0)
     node = node.insert_partial_schedule(mupa)
 
-    tiled_node = _apply_tile_to_band(func, node, [Tile(0, 2), Tile(1, 3)], ctx)  # i軸, j軸
+    tiled_node = _apply_tile_to_band(
+        func, node, [Tile(0, 2), Tile(1, 3)], ctx
+    )  # i軸, j軸
     tiled_schedule = tiled_node.get_schedule()
 
     expected_schedule = isl.Schedule.read_from_str(

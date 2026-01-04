@@ -43,7 +43,9 @@ def check_tiling_legality(
     tile_axes_indices = []
     for tile in tiles:
         if tile.axis >= n_axes:
-            raise ValueError(f"Invalid axis index: {tile.axis}. Valid range: 0-{n_axes - 1}")
+            raise ValueError(
+                f"Invalid axis index: {tile.axis}. Valid range: 0-{n_axes - 1}"
+            )
         tile_axes_indices.append(tile.axis)
 
     # スケジュールとアクセスを構築
@@ -199,9 +201,7 @@ def _apply_tile_to_band(
     tile_sizes = isl.MultiVal.zero(space)
     for i in range(n_dims):
         if i in tile_map:
-            tile_sizes = tile_sizes.set_val(
-                i, isl.Val.int_from_si(ctx, tile_map[i])
-            )
+            tile_sizes = tile_sizes.set_val(i, isl.Val.int_from_si(ctx, tile_map[i]))
         else:
             # タイル化しない軸はサイズ1
             tile_sizes = tile_sizes.set_val(i, isl.Val.int_from_si(ctx, 1))

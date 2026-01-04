@@ -585,4 +585,3 @@ void skewed(int *A) {
 }"""
 
     assert c_code == expected
-
