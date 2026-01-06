@@ -1,5 +1,7 @@
 """compilerモジュールのテスト."""
 
+import pytest
+
 from compiler import compile
 from ir_types import (
     Access,
@@ -321,6 +323,170 @@ void triple(int *A, int *B, int *C, int *D) {
 }"""
 
     assert c_code == expected
+
+
+def test_compile_multi_primfunc_gemm_bias_relu():
+    """複数PrimFuncのGEMM + Bias + ReLUを融合できることをテストする."""
+    m = 4
+    n = 3
+    k = 5
+
+    a = Tensor("A", (IntConst(m), IntConst(k)))
+    b = Tensor("B", (IntConst(k), IntConst(n)))
+    c = Tensor("C", (IntConst(m), IntConst(n)))
+    bias = Tensor("Bias", (IntConst(n),))
+    d = Tensor("D", (IntConst(m), IntConst(n)))
+    e = Tensor("E", (IntConst(m), IntConst(n)))
+
+    gemm = PrimFunc(
+        name="gemm",
+        params=(a, b, c),
+        computes=(
+            Compute(
+                name="S_gemm",
+                domain=Domain(
+                    params=(),
+                    iterators=(Iterator("i"), Iterator("j"), Iterator("k", kind="reduce")),
+                    constraints=(
+                        Compare(lhs=IntConst(0), op="LE", rhs=Var("i")),
+                        Compare(lhs=Var("i"), op="LT", rhs=IntConst(m)),
+                        Compare(lhs=IntConst(0), op="LE", rhs=Var("j")),
+                        Compare(lhs=Var("j"), op="LT", rhs=IntConst(n)),
+                        Compare(lhs=IntConst(0), op="LE", rhs=Var("k")),
+                        Compare(lhs=Var("k"), op="LT", rhs=IntConst(k)),
+                    ),
+                ),
+                body=ReduceStore(
+                    op="Sum",
+                    access=Access(tensor=c, index=(Var("i"), Var("j"))),
+                    value=BinaryOp(
+                        op="Mul",
+                        lhs=Load(access=Access(tensor=a, index=(Var("i"), Var("k")))),
+                        rhs=Load(access=Access(tensor=b, index=(Var("k"), Var("j")))),
+                    ),
+                    init=IntConst(0),
+                ),
+            ),
+        ),
+        schedule=Schedule(("i", "j", "k")),
+    )
+
+    bias_add = PrimFunc(
+        name="bias",
+        params=(c, bias, d),
+        computes=(
+            Compute(
+                name="S_bias",
+                domain=Domain(
+                    params=(),
+                    iterators=(Iterator("x"), Iterator("y")),
+                    constraints=(
+                        Compare(lhs=IntConst(0), op="LE", rhs=Var("x")),
+                        Compare(lhs=Var("x"), op="LT", rhs=IntConst(m)),
+                        Compare(lhs=IntConst(0), op="LE", rhs=Var("y")),
+                        Compare(lhs=Var("y"), op="LT", rhs=IntConst(n)),
+                    ),
+                ),
+                body=Store(
+                    access=Access(tensor=d, index=(Var("x"), Var("y"))),
+                    value=BinaryOp(
+                        op="Add",
+                        lhs=Load(access=Access(tensor=c, index=(Var("x"), Var("y")))),
+                        rhs=Load(access=Access(tensor=bias, index=(Var("y"),))),
+                    ),
+                ),
+            ),
+        ),
+        schedule=Schedule(("x", "y")),
+    )
+
+    relu = PrimFunc(
+        name="relu",
+        params=(d, e),
+        computes=(
+            Compute(
+                name="S_relu",
+                domain=Domain(
+                    params=(),
+                    iterators=(Iterator("p"), Iterator("q")),
+                    constraints=(
+                        Compare(lhs=IntConst(0), op="LE", rhs=Var("p")),
+                        Compare(lhs=Var("p"), op="LT", rhs=IntConst(m)),
+                        Compare(lhs=IntConst(0), op="LE", rhs=Var("q")),
+                        Compare(lhs=Var("q"), op="LT", rhs=IntConst(n)),
+                    ),
+                ),
+                body=ReduceStore(
+                    op="Max",
+                    access=Access(tensor=e, index=(Var("p"), Var("q"))),
+                    value=Load(access=Access(tensor=d, index=(Var("p"), Var("q")))),
+                    init=IntConst(0),
+                ),
+            ),
+        ),
+        schedule=Schedule(("p", "q")),
+    )
+
+    c_code = compile([gemm, bias_add, relu])
+
+    expected = """\
+void fused_gemm_bias_relu(int *A, int *B, int *C, int *Bias, int *D, int *E) {
+    for (int c0 = 0; c0 <= 3; c0++) {
+        for (int c1 = 0; c1 <= 2; c1++) {
+            for (int c2 = 0; c2 <= 4; c2++) {
+                if (c2 == 0) C[(c0*3 + c1)] = 0;
+                C[(c0*3 + c1)] += A[(c0*5 + c2)] * B[(c2*3 + c1)];
+            }
+            D[(c0*3 + c1)] = C[(c0*3 + c1)] + Bias[c1];
+            if (1) E[(c0*3 + c1)] = 0;
+            E[(c0*3 + c1)] = (E[(c0*3 + c1)] > D[(c0*3 + c1)]) ? E[(c0*3 + c1)] : D[(c0*3 + c1)];
+        }
+    }
+}"""
+
+    assert c_code == expected
+
+
+def test_compile_multi_primfunc_no_loop_raises():
+    """ループネストを作れない場合はエラーにする."""
+    a = Tensor("A", ())
+    b = Tensor("B", ())
+    c = Tensor("C", ())
+
+    func1 = PrimFunc(
+        name="scalar1",
+        params=(a, b),
+        computes=(
+            Compute(
+                name="S1",
+                domain=Domain(params=(), iterators=(), constraints=()),
+                body=Store(
+                    access=Access(tensor=b, index=()),
+                    value=Load(access=Access(tensor=a, index=())),
+                ),
+            ),
+        ),
+        schedule=Schedule(()),
+    )
+
+    func2 = PrimFunc(
+        name="scalar2",
+        params=(b, c),
+        computes=(
+            Compute(
+                name="S2",
+                domain=Domain(params=(), iterators=(), constraints=()),
+                body=Store(
+                    access=Access(tensor=c, index=()),
+                    value=Load(access=Access(tensor=b, index=())),
+                ),
+            ),
+        ),
+        schedule=Schedule(()),
+    )
+
+    with pytest.raises(ValueError):
+        compile([func1, func2])
 
 
 def test_compile_independent_computes():
